@@ -1,0 +1,170 @@
+Pixar PhotoRealistic RenderMan 11.5.3 (Win32.intelP3)
+Copyright (c) 1988-2004 Pixar.
+linked Fri Feb 27 15:43:20  2004
+License Digest:  *H""S|0X,Hde2-zcb2|CkZ]30XSIHCjfYG1XfO8|BkZ]E0[SY76iYKF6YgH;
+Rendering at 256x192 pixels, 2x2 samples
+	"RenderMan" (mode = rgb, type = framebuffer)
+       Memory:         1.90 MB
+       Real time:     00:01
+       User time:     00:00
+       Kernel time:   00:00
+       Max resident mem:  6.67 MB
+       Page faults: 6139, Peak pagefile usage:  6.59 MB, Peak paged pool usage:  0.04 MB
+
+Memory breakdown:    Current MB      Peak MB
+  Parsing:             0.00 ( 0.2%)     0.00
+  GPrim:               0.00 ( 0.0%)     0.01
+  GPrim GOPs:          0.00 ( 0.0%)     0.01
+  Trim:                0.00 ( 0.0%)     0.00
+  GUT caches:          0.00 ( 0.0%)     0.00
+  Catmarks:            0.00 ( 0.0%)     0.00
+  Traceable Prims:     0.00 ( 0.0%)     0.00
+  Accelerators:        0.00 ( 0.0%)     0.00
+  Vertex vectors:      0.00 ( 0.0%)     0.00
+  Grids:               0.00 ( 0.0%)     0.39
+  ShadedGrids:         0.00 ( 0.0%)     0.00
+  Stitch gprims:       0.00 ( 0.0%)     0.00
+  Stitch edges:        0.00 ( 0.0%)     0.01
+  Stitch edata:        0.00 ( 0.0%)     0.03
+  Shader:              0.08 ( 4.0%)     0.08
+    Def:               0.01 ( 0.4%)     0.01
+    Sice:              0.00 ( 0.0%)     0.00
+    GSB:               0.00 ( 0.0%)     0.00
+    Arg:               0.00 ( 0.1%)     0.00
+    Tag:               0.00 ( 0.0%)     0.00
+    Instance:          0.00 ( 0.0%)     0.00
+    BOP:               0.07 ( 3.6%)     0.07
+  Texture:             0.00 ( 0.0%)     0.00
+  Micropolygons:       0.00 ( 0.0%)     0.50
+  Visible points:      0.06 ( 3.3%)     0.06
+  Free+Unaccounted:    1.76 (92.5%)
+  Total:               1.90
+
+Geometry:
+  Gprims: created 1030, currently 0, peak 69 (9K)
+  GP gops: created 1030, currently 0, peak 69 (15K)
+  NURBS: 0 failed flat tests due to uniform variables.
+         0 failed flat tests due to repeated knots.
+         0 sick derivatives fixed.
+         0 entire grids trimmed.
+         0 grids backface culled.
+  Frustum box check: 1 calls, 0 culled, 1 inside
+  Vertex vectors: created 0, currently 0K, peak 0K
+  Light lists: created 2, currently 0, peak 2 (0K)
+  Lights per light list: average 1.5, peak 3
+Crack elimination:
+  Gprims: created 1030, currently 0, peak 69 (1K)
+  Edges: created 2890, currently 0, peak 273 (6K)
+  Edge data: created 701K, currently 0K, peak 32K
+Rendering:
+  Gprims: 2337 processed, 499 pushed forward
+  --------------------------------------------------------------------------
+  Gprim Fates:         Total  Eye   Frust  Clip  Back   Hidden  Split  Diced
+                              Split Culled Plane Facing
+  --------------------------------------------------------------------------
+  Initial model:           1                                      100%       
+   (after splits)       1803                               4.2%  49.5%  52.4%
+  All gprims:           1803                               4.2%  49.5%  52.4%
+  --------------------------------------------------------------------------
+  Diced grids: 840 total (0 redices), 193.1 average points/grid
+               120 pushed forward late, 0 backface culled late, 0 tiny grids
+               97 tentative hidden, 0 tentative displacement rejects
+               0 extreme displacements succeeded, 0 rejected
+  Shaded grids: 669 total, 210.4 average points/grid
+                0 culled late
+Grid merging statistics: (average size increase: 1.1x)
+        59 grids were combined with an existing grid
+       669 new grids were created, for the following reasons:
+       545 - grid would be too large
+       124 - first grid in bucket
+  Detailed breakdown of surface shaders for rejections marked (*) above:
+Histogram of the number of points in each diced grid:
++------+------+------+------+------+------+------+------+
+|<=  4 |<=  8 |<= 16 |<= 32 |<= 64 |<=128 |<=256 | >256 |
++------+------+------+------+------+------+------+------+
+|  0.0%|  0.0%|  0.0%|  0.0%|  0.0%|  8.6%| 78.1%| 13.3%|
++------+------+------+------+------+------+------+------+
+Histogram of the number of points in each shaded grid:
++------+------+------+------+------+------+------+------+
+|  0.0%|  0.0%|  0.0%|  0.0%|  0.0%|  1.6%| 79.8%| 18.5%|
++------+------+------+------+------+------+------+------+
+Raytracing (ray accelerator):
+  (no rays traced)
+  Hemisphere Samplings (occlusion + indirectdiffuse):  0
+Raytracing (geometric primitives):
+  NURBS ray hits:  0 total, 0 rejected by trim
+  Catmark grids:   0 hits, 0 misses
+  CM Mesh->blps:   0
+  ray - triangle intersection tests:  0  (0 hits)
+  ray - flat quad intersection tests:  0  (0 hits)
+  cold tessellations at level 1:         0
+  cold tessellations at level 2:         0
+  cold tessellations at level 3:         0
+  Multires geom cache: 218453 + 34952 + 3023 entries (11946 + 10922 + 11619KB)
+  geom cache 1:         0 hits,         0 misses, 100% hit rate
+  geom cache 2:         0 hits,         0 misses, 100% hit rate
+  geom cache 3:         0 hits,         0 misses, 100% hit rate
+  total geom cache lookups: 0
+Ray depth histogram:
++------+------+------+------+------+------+------+------+------+------+
+|<=  1 |    2 |    3 |    4 |    5 |    6 |    7 |    8 |    9 | >  9 |
++------+------+------+------+------+------+------+------+------+------+
+|  0.0%|  0.0%|  0.0%|  0.0%|  0.0%|  0.0%|  0.0%|  0.0%|  0.0%|  0.0%|
++------+------+------+------+------+------+------+------+------+------+
+Rays by type:
+  Specular:             0
+  Diffuse:              0
+  Transmission:         0
+  Light:                0
+Shading:  140768 points (0 trimmed), 669 grids
+  Memory per grid: average 39.5k, max 59.7k
+  Points per grid: average 210.4, min 100, max 288
+  Shader instances (sices): reused 0, created 5, total 5
+  Vertex instances (GSBs): reused 0, created 0 (+ one per sice)
+  Executable instances (instances): reused 2672, created 4
+Shader storage (proc -1):
+  def storage: created 4, currently 4, peak 4 (8K)
+  sice storage: created 5, currently 1, peak 5 (0K)
+  GSB storage: created 5, currently 1, peak 5 (0K)
+  arg storage: created 18, currently 9, peak 14 (1K)
+  tag storage: created 9, currently 5, peak 9 (0K)
+  instance storage: created 4, currently 0, peak 4 (2K)
+  BOP storage: created 317K, currently 69K, peak 69K
+Textures:
+CPU TFILE CH     REFS    WIDE   SAME SEARCH  PROBE  FAULTS    RATE TILES PEAK  CNREAD CNFAULT QCHECKS QVISIBL QHIDDEN FCHECKS FVISIBL FHIDDEN
+[No textures were accessed.]
+  Texture cache memory: 10240 KB (2560 tiles, 4096 bytes each)
+Hiding:
+  Sampling: 4 samples per pixel, 16x16 pixels per bucket
+  Opacity threshold: (0.996094, 0.996094, 0.996094)
+  Z threshold: (0.00390625, 0.00390625, 0.00390625)
+  Occlusion culling: 76 gprims, 13677 mps, 200058 vps
+  Micropolygons:
+    131424 created
+    0 current (0 KB), 4457 peak (504 KB)
+    4480 allocated (507 KB), 4480 free
+    0.1 KB overhead (14+0+0+0+0 blocks)
+    0 aov store current (0 KB), 0 peak (0 KB)
+    Hit rate: 67.25% (88380 of 131424) (4294878718 not sampled)
+    Pushes: 4998 forward (3.80%), 4821 down (3.67%)
+    Hittest success rate: 14.42% (115792 of 802728 samples)
+  Visible points:
+    115792 created
+    0 current, 1024 peak, 1024 allocated (64 KB), 1024 free
+    0 opacity culled (0.00%)
+Depth complexity histogram:
++------+------+------+------+------+------+------+------+------+------+
+|<=  1 |    2 |    3 |    4 |    5 |    6 |    7 |    8 |    9 | >  9 |
++------+------+------+------+------+------+------+------+------+------+
+|100.0%|  0.0%|  0.0%|  0.0%|  0.0%|  0.0%|  0.0%|  0.0%|  0.0%|  0.0%|
++------+------+------+------+------+------+------+------+------+------+
+Visible point list insertion histogram:
++------+------+------+------+------+------+------+------+------+------+
+|100.0%|  0.0%|  0.0%|  0.0%|  0.0%|  0.0%|  0.0%|  0.0%|  0.0%|  0.0%|
++------+------+------+------+------+------+------+------+------+------+
+Visible point list depth histogram:
++------+------+------+------+------+------+------+------+------+------+
+|<=  1 |    2 |<=  4 |<=  8 |<= 16 |<= 32 |<= 64 |<=128 |<=256 | >256 |
++------+------+------+------+------+------+------+------+------+------+
+|100.0%|  0.0%|  0.0%|  0.0%|  0.0%|  0.0%|  0.0%|  0.0%|  0.0%|  0.0%|
++------+------+------+------+------+------+------+------+------+------+

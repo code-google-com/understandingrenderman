@@ -1,0 +1,8 @@
+#MayaMan 1.2.18
+##RenderMan RIB
+version 3.03
+ShadingRate 1
+PixelSamples 2 2
+PixelFilter "catmull-rom" 3 3
+Quantize "rgba" 255 0 255 0.5
+Exposure 1 1

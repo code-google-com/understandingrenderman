@@ -1,0 +1,133 @@
+#MayaMan 1.2.18
+##RenderMan RIB
+version 3.03
+Projection "perspective" "fov" [54.4322]
+ScreenWindow -1 1 -0.750188 0.750188
+Shutter 0 0
+Clipping 0.1 1000
+Scale -1 1 1
+Rotate 0 0 0 1
+Rotate -11.7384 1 0 0
+Rotate 127.8 0 1 0
+Translate -16.0099 -12.2706 -15.4369
+WorldBegin 
+	Attribute "visibility" "integer trace" [1]
+	Attribute "grouping" "string membership" ["+shadow_casters"]
+	Attribute "grouping" "string membership" ["+reflection"]
+	Attribute "grouping" "string membership" ["+refraction"]
+	Attribute "grouping" "string membership" ["+indirect"]
+	Attribute "visibility" "string transmission" ["Os"]
+	# Default lights
+	LightSource "RMsoftDistant" 1 
+		"to" [0.537302 8.20175 3.43514]
+		"lightcolor" [1 1 1]
+		"from" [16.0099 12.2706 15.4369]
+	# Begin Shader Inlines
+	#
+ArchiveBegin "sheep1_shaders_mms_lambert1"
+	Surface "sheep1/shaders/mms_lambert1" 
+	#
+ArchiveEnd
+	#
+ArchiveBegin "sheep1_shaders_mms_sheep1_phong1"
+	Surface "sheep1/shaders/mms_sheep1_phong1" 
+	#
+ArchiveEnd
+	#
+ArchiveBegin "sheep1_shaders_mms_sheep1_phong2"
+	Surface "sheep1/shaders/mms_sheep1_phong2" 
+	#
+ArchiveEnd
+	#
+ArchiveBegin "sheep1_shaders_mms_blinn1"
+	Surface "sheep1/shaders/mms_blinn1" 
+	#
+ArchiveEnd
+	# End Shader Inlines
+	AttributeBegin 
+		ConcatTransform [50 0 0 0 0 50 0 0 0 0 50 0 0 0 0 1]
+		AttributeBegin 
+			Attribute "identifier" "name" ["nurbsSphere1-nurbsSphereShape1"]
+			Color [1 1 1]
+			ReadArchive "sheep1_shaders_mms_lambert1" 
+			Sides 2
+			ReverseOrientation 
+			Attribute "user" "float indirectgenstrength" [1]
+			Attribute "visibility" "string transmission" ["transparent"]
+			TextureCoordinates 0 1 0 0 1 1 1 0
+			ReadArchive "sheep1_preview_untitled_nurbsSphereShape1_10e670a5" 
+		AttributeEnd 
+	AttributeEnd 
+	AttributeBegin 
+		AttributeBegin 
+			Attribute "identifier" "name" ["sheep1_eyeWhiteLeft-sheep1_eyeWhiteLeftShape"]
+			Color [1 1 1]
+			ReadArchive "sheep1_shaders_mms_sheep1_phong1" 
+			Sides 2
+			ReverseOrientation 
+			Attribute "user" "float indirectgenstrength" [1]
+			Attribute "visibility" "string transmission" ["transparent"]
+			TextureCoordinates 0 1 0 0 1 1 1 0
+			ReadArchive "sheep1_preview_untitled_sheep1_eyeWhiteLeftShape_d6b406c2" 
+		AttributeEnd 
+	AttributeEnd 
+	AttributeBegin 
+		AttributeBegin 
+			Attribute "identifier" "name" ["sheep1_eyePupilLeft-sheep1_eyePupilLeftShape"]
+			Color [0 0 0]
+			ReadArchive "sheep1_shaders_mms_sheep1_phong2" 
+			Sides 2
+			ReverseOrientation 
+			Attribute "user" "float indirectgenstrength" [1]
+			Attribute "visibility" "string transmission" ["transparent"]
+			TextureCoordinates 0 1 0 0 1 1 1 0
+			ReadArchive "sheep1_preview_untitled_sheep1_eyePupilLeftShape_854a5ffc" 
+		AttributeEnd 
+	AttributeEnd 
+	AttributeBegin 
+		AttributeBegin 
+			Attribute "identifier" "name" ["sheep1_eyePupilRight-sheep1_eyePupilRightShape"]
+			Color [0 0 0]
+			ReadArchive "sheep1_shaders_mms_sheep1_phong2" 
+			Sides 2
+			Attribute "user" "float indirectgenstrength" [1]
+			Attribute "visibility" "string transmission" ["transparent"]
+			TextureCoordinates 0 1 0 0 1 1 1 0
+			ReadArchive "sheep1_preview_untitled_sheep1_eyePupilRightShape_5f32d9a9" 
+		AttributeEnd 
+	AttributeEnd 
+	AttributeBegin 
+		AttributeBegin 
+			Attribute "identifier" "name" ["sheep1_eyeWhiteRight-sheep1_eyeWhiteRightShape"]
+			Color [1 1 1]
+			ReadArchive "sheep1_shaders_mms_sheep1_phong1" 
+			Sides 2
+			Attribute "user" "float indirectgenstrength" [1]
+			Attribute "visibility" "string transmission" ["transparent"]
+			TextureCoordinates 0 1 0 0 1 1 1 0
+			ReadArchive "sheep1_preview_untitled_sheep1_eyeWhiteRightShape_775e4de3" 
+		AttributeEnd 
+	AttributeEnd 
+	AttributeBegin 
+		AttributeBegin 
+			Attribute "identifier" "name" ["sheep1_sheepHead-sheep1_sheepHeadShape"]
+			Color [1 1 1]
+			ReadArchive "sheep1_shaders_mms_lambert1" 
+			Sides 2
+			Attribute "user" "float indirectgenstrength" [1]
+			Attribute "visibility" "string transmission" ["transparent"]
+			ReadArchive "sheep1_preview_untitled_sheep1_sheepHeadShape_22d85054" 
+		AttributeEnd 
+	AttributeEnd 
+	AttributeBegin 
+		AttributeBegin 
+			Attribute "identifier" "name" ["sheep1_sheepBody-sheep1_sheepBodyShape"]
+			Color [0.5 0.5 0.5]
+			ReadArchive "sheep1_shaders_mms_blinn1" 
+			Sides 2
+			Attribute "user" "float indirectgenstrength" [1]
+			Attribute "visibility" "string transmission" ["transparent"]
+			ReadArchive "sheep1_preview_untitled_sheep1_sheepBodyShape_6c38a3f4" 
+		AttributeEnd 
+	AttributeEnd 
+WorldEnd 

@@ -1,0 +1,112 @@
+#MayaMan 1.2.18
+##RenderMan RIB
+version 3.03
+Projection "perspective" "fov" [54.4322]
+ScreenWindow -1 1 -0.750188 0.750188
+Shutter 0 0
+Clipping 0.1 1000
+Scale -1 1 1
+Rotate 0 0 0 1
+Rotate -18.9384 1 0 0
+Rotate 133.4 0 1 0
+Translate -17.482 -16.5197 -20.2588
+WorldBegin 
+	Attribute "visibility" "integer trace" [1]
+	Attribute "grouping" "string membership" ["+shadow_casters"]
+	Attribute "grouping" "string membership" ["+reflection"]
+	Attribute "grouping" "string membership" ["+refraction"]
+	Attribute "grouping" "string membership" ["+indirect"]
+	Attribute "visibility" "string transmission" ["Os"]
+	# Default lights
+	LightSource "RMsoftDistant" 1 
+		"to" [3.73712 10.0287 7.26088]
+		"lightcolor" [1 1 1]
+		"from" [17.482 16.5197 20.2588]
+	# Begin Shader Inlines
+	#
+ArchiveBegin "untitled_shaders_mms_lambert1"
+	Surface "untitled/shaders/mms_lambert1" 
+	#
+ArchiveEnd
+	# End Shader Inlines
+	AttributeBegin 
+	AttributeEnd 
+	AttributeBegin 
+	AttributeEnd 
+	AttributeBegin 
+	AttributeEnd 
+	AttributeBegin 
+	AttributeEnd 
+	AttributeBegin 
+		AttributeBegin 
+			Attribute "identifier" "name" ["polyToSubd1-polyToSubdShape1"]
+			Color [0.5 0.5 0.5]
+			ReadArchive "untitled_shaders_mms_lambert1" 
+			Sides 2
+			Attribute "user" "float indirectgenstrength" [1]
+			Attribute "visibility" "string transmission" ["transparent"]
+			ReadArchive "untitled_preview_untitled_polyToSubdShape1_f3e133b5_0" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape1_f3e133b5_1" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape1_f3e133b5_2" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape1_f3e133b5_3" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape1_f3e133b5_4" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape1_f3e133b5_5" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape1_f3e133b5_6" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape1_f3e133b5_7" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape1_f3e133b5_8" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape1_f3e133b5_9" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape1_f3e133b5_10" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape1_f3e133b5_11" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape1_f3e133b5_12" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape1_f3e133b5_13" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape1_f3e133b5_14" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape1_f3e133b5_15" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape1_f3e133b5_16" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape1_f3e133b5_17" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape1_f3e133b5_18" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape1_f3e133b5_19" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape1_f3e133b5_20" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape1_f3e133b5_21" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape1_f3e133b5_22" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape1_f3e133b5_23" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape1_f3e133b5_24" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape1_f3e133b5_25" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape1_f3e133b5_26" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape1_f3e133b5_27" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape1_f3e133b5_28" 
+		AttributeEnd 
+	AttributeEnd 
+	AttributeBegin 
+		AttributeBegin 
+			Attribute "identifier" "name" ["polyToSubd2-polyToSubdShape2"]
+			Color [0.5 0.5 0.5]
+			ReadArchive "untitled_shaders_mms_lambert1" 
+			Sides 2
+			Attribute "user" "float indirectgenstrength" [1]
+			Attribute "visibility" "string transmission" ["transparent"]
+			ReadArchive "untitled_preview_untitled_polyToSubdShape2_969d627b_0" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape2_969d627b_1" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape2_969d627b_2" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape2_969d627b_3" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape2_969d627b_4" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape2_969d627b_5" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape2_969d627b_6" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape2_969d627b_7" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape2_969d627b_8" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape2_969d627b_9" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape2_969d627b_10" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape2_969d627b_11" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape2_969d627b_12" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape2_969d627b_13" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape2_969d627b_14" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape2_969d627b_15" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape2_969d627b_16" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape2_969d627b_17" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape2_969d627b_18" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape2_969d627b_19" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape2_969d627b_20" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape2_969d627b_21" 
+			ReadArchive "untitled_preview_untitled_polyToSubdShape2_969d627b_22" 
+		AttributeEnd 
+	AttributeEnd 
+WorldEnd 

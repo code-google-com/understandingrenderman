@@ -1,0 +1,33 @@
+<root>
+ <shader name="textured_noise" type="surface">
+  <params>
+   <decl name="freq#" type="float">
+   <init-value>
+   <float>100</float>
+   </init-value>
+   </decl>
+  </params>
+  <body>
+   <assignment>
+    <ident>Ci#</ident>
+    <times>
+     <function-call name="texture">
+      <string>texture.tx</string>
+      <ident>s</ident>
+      <ident>t</ident>
+     </function-call>
+     <function-call name="noise">
+     <times>
+      <ident>freq#</ident>
+      <ident>s</ident>
+     </times>
+     <times>
+      <ident>freq#</ident>
+      <ident>t</ident>
+     </times>
+     </function-call>
+    </times>
+   </assignment>
+  </body>
+ </shader>
+</root>

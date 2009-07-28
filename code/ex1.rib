@@ -1,0 +1,8 @@
+Display "RenderMan" "framebuffer" "rgb"
+Format 256 192 1
+ShadingRate 1
+WorldBegin
+  Surface "plastic"
+  Polygon "P" [0.5 0.5 0.5 0.5 -0.5
+    0.5 -0.5 -0.5 0.5 -0.5 0.5 0.5]
+WorldEnd

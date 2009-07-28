@@ -1,0 +1,17 @@
+#MayaMan 1.2.18
+##RenderMan RIB
+version 3.03
+Declare "dirmap" "string"
+Option "searchpath" "dirmap" ["[\"UNC\" \"//d/mayaman/bin\" \"dummy\"] [\"NFS\" \"//Z/pcsoftware\" \"/film/software/linux\"] [\"UNC\" \"/film/software/linux\" \"//Z/pcsoftware\"] [\"NFS\" \"//N\" \"/film/3d9/job_data\"] [\"UNC\" \"/film/3d9/job_data\" \"//N\"]"]
+ReadArchive "//F/book/MayaMan_Project/mayaman/sheep1/preview_untitled.search_path" 
+FrameBegin 1
+	Identity 
+	ReadArchive "sheep1/geometry/preview_untitled/geom_with_tx_info.rib" 
+	ReadArchive "//F/book/MayaMan_Project/mayaman/sheep1/preview_untitled.qual" 
+	Declare "mode" "uniform integer"
+	Display "//F/book/MayaMan_Project/mayaman/images/preview_untitled.tif" "animal" "rgba" 
+		"mode" [1]
+	Attribute "user" "string passtype" ["beauty"]
+	Attribute "user" "string viewname" ["perspShape_4215abd5"]
+	ReadArchive "//F/book/MayaMan_Project/mayaman/sheep1/preview_untitled_cam_and_world.0.rib" 
+FrameEnd 
