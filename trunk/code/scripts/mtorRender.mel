@@ -1,0 +1,1695 @@
+//
+//	mtorRender.mel
+//
+//	version 1.2
+// 	19.11.2004 
+//
+//	Written by Yuri Meshalkin (aka mesh) www.geocities.com/mesh_studio
+//
+//  Description:
+//	This script mostly duplicates functionality of MTOR RenderGlobals (RAT 6.0), 
+//  but with some new features:
+//    - commands for "Render", "GenerateRIB", "Generate Worklist"
+//    - quick access for common RAT .ini files
+//    - advanced and compact UI mode
+//    - QuickLaunch bar with switches and popup menus for recently used options  
+//    - Popup menu for cameras list from Maya scene
+//    - Maintaince od width/height ratio for display resolution
+//    - access to depreciated options that are hidden in current RenderGlobals ( Jitter, Hider, )
+//  v1.2
+//    - added support for local render and AOVs presets
+//     
+global string $mtorRenderWin = "mtorRenderWin";
+global string $mtorRenderTextViewer = "shell notepad.exe";
+global string $mtorRenderWinForm = "";
+global string $mtorResList[];
+global int $oldRes[2];
+global string $mtorGet = "mtor control getvalue -rg ";
+global string $mtorSet = "mtor control setvalue -rg ";
+//global string $mtor_rg_names[];
+//global string $mtor_rg_values[];
+//===========================================================================================
+//
+//===========================================================================================
+global proc mtorRender() {
+global string $mtorRenderWin;
+global string $mtorRenderTextViewer;
+global int $mtorRenderAdvancedUI;
+	
+	string $OS = `about -os`, $vietextCmd;
+	//if ( $OS == "nt") system ( "shell " + $textViewerName + " " + $path );
+	//else system ( $textViewerName + " " + $path + " &");	
+	string $rattree = `getenv RATTREE`;
+	string $rmantree = `getenv RMANTREE`;
+	string $vers_RAT = `mtor getversion rat`; 
+	int $vers_RAT_int = $vers_RAT;
+	
+	if ( $vers_RAT_int < 600 ) {
+    confirmDialog -title "Warning!" -message "This script only for RAT v6.0 and greater"
+    	-button "Ok";
+  }
+			
+	if ( `window -exists $mtorRenderWin` ) 
+	 	deleteUI -window $mtorRenderWin;
+	if (`windowPref -ex $mtorRenderWin`)
+		windowPref -r $mtorRenderWin;
+		
+	window  -mb true -rtf false -title "mtorRender v1.2" $mtorRenderWin; 
+	string $syncCmd = "mtor control getvalue -sync;mtorRenderUI;";
+	string $globalPresetsStr = `slimcmd rmanctl GetPresets`;
+	menu -label "Presets" -tearOff false;
+		// setup mtor global presets menu
+		menuItem -label "Global" -sm true;
+		if ( $globalPresetsStr != "" ) {
+			string $g, $globalPresets[];
+			tokenize( $globalPresetsStr, $globalPresets );
+			for ( $g in $globalPresets ) 
+				menuItem -label $g -c ( "slimcmd rmanctl LoadPreset " + $g + ";" + $syncCmd );
+		}
+		setParent -menu ..;
+		menuItem -d true;
+	
+	// setup local presets menu
+	string $localMenu = `menuItem -label "Local" -command "" -sm true`;
+	mtorRefreshLocalPresetsMenu( $localMenu );	
+	setParent -menu ..;
+	menuItem -label "Save local..." -command ("mtorSaveLocalPreset " + $localMenu );
+	setParent ..;
+	menu -label "Preferences" -tearOff false;
+		menuItem -label "MTOR.ini" -command ("system( \"" + $mtorRenderTextViewer + " " + $rattree + "/etc/mtor.ini\")");	
+		menuItem -label "TOR.ini" -command ("system( \"" + $mtorRenderTextViewer + " " + $rattree + "/etc/tor.ini\")");	
+		menuItem -label "RAT.ini" -command ("system( \"" + $mtorRenderTextViewer + " " + $rattree + "/etc/rat.ini\")");	
+		menuItem -label "slim.ini" -command ("system( \"" + $mtorRenderTextViewer + " " + $rattree + "/etc/slim.ini\")");
+		menuItem -label "irma.ini" -command ("system( \"" + $mtorRenderTextViewer + " " + $rattree + "/etc/irma.ini\")");
+		menuItem -label "it.ini" -command ("system( \"" + $mtorRenderTextViewer + " " + $rattree + "/etc/it.ini\")");
+		menuItem -d true;	
+		menuItem -label "rendermn.ini" -command ("system( \"" + $mtorRenderTextViewer + " " + $rmantree + "/etc/rendermn.ini\")");
+		menuItem -label "netrman.ini" -command ("system( \"" + $mtorRenderTextViewer + " " + $rmantree + "/etc/netrman.ini\")");
+		menuItem -d true;	
+		menuItem -label "alfred.ini" -command ("system( \"" + $mtorRenderTextViewer + " " + $rattree + "/etc/alfred.ini\")");	
+		menuItem -label "alfred.schedule" -command ("system( \"" + $mtorRenderTextViewer + " " + $rattree + "/etc/alfred.schedule\")");
+		menuItem -label "alfserver.ini" -command ("system( \"" + $mtorRenderTextViewer + " " + $rmantree + "/etc/alfserver.ini\")");
+	
+	menu -label "Commands" -tearOff false;
+	  menuItem -label "Render" -command "mtor RenderSpool";	
+	  menuItem -label "Generate RIB" -command "mtorRenderGenerateRib" ;
+	  menuItem -label "Generate Worklist" -command "mtorGenWorklist"; 
+	  menuItem -label "Sync mtor RenderGlobals" -command "mtor control getvalue -sync;mtorRenderUI;" -ann "Synchronize settings with mtor RenderGlobals";
+	  
+	if( `optionVar -ex "mtorRenderAdvancedUI"` ) {
+		$mtorRenderAdvancedUI =`optionVar -q "mtorRenderAdvancedUI"`;
+	} 
+	else {
+		$mtorRenderAdvancedUI = true;
+		optionVar -sv "mtorRenderAdvancedUI" $mtorRenderAdvancedUI;
+	}
+	// string $mtor_rg_values_str = eval("slimcmd rmanctl GetValue \"*\"");
+	// string $mtor_rg_names_str = eval("slimcmd rmanctl GetControls");
+	mtorRenderUI();  
+	showWindow $mtorRenderWin;  //	 show the new window
+	scriptJob -e "SceneOpened" ("mtor control getvalue -sync; mtorRenderUI;") -p $mtorRenderWin;
+}
+//===========================================================================================
+//
+//===========================================================================================
+global proc mtorSaveLocalPresetOk( string $localMenu ) {
+  global string $mtorGet; 
+  string $preset = `textFieldGrp -q -tx mtorSaveLocalPresetTxFld`;
+
+  if ( $preset != "" ) {
+  	int $i;
+  	string $lines[];
+
+  	if( `optionVar -q "mtorRenderlPresetOpt_DspyName"` == 1 )
+  	  $lines[$i++] = ("dspyName = " + `eval($mtorGet) "dspyName"` );
+  	if( `optionVar -q "mtorRenderlPresetOpt_CamName"` == 1 )
+  	  $lines[$i++] = ("camName = " + `eval($mtorGet) "camName"` );  
+  	if( `optionVar -q "mtorRenderlPresetOpt_Cntx"` == 1 )
+  	  $lines[$i++] = ("contextString = " + `eval($mtorGet) "contextString"` ); 
+  	// "Display options"
+  	if( `optionVar -q "mtorRenderlPresetOpt_DspyOpt"` == 1 ) {
+  	  $lines[$i++] = ("dspyServer = " + `eval($mtorGet) "dspyServer"` ); 
+  	  $lines[$i++] = ("dspyServerMode = " + `eval($mtorGet) "dspyServerMode"` ); 
+  	  $lines[$i++] = ("dspyUnique = " + `eval($mtorGet) "dspyUnique"` ); 
+  	}
+  	// "Resolution"
+  	if( `optionVar -q "mtorRenderlPresetOpt_Res"` == 1 ) {
+  	  $lines[$i++] = ("dspyFormatX = " + `eval($mtorGet) "dspyFormatX"` ); 
+  	  $lines[$i++] = ("dspyFormatY = " + `eval($mtorGet) "dspyFormatY"` ); 
+  	  $lines[$i++] = ("pixelRatio = " + `eval($mtorGet) "pixelRatio"` ); 
+  	}
+  	// "Animations"
+  	if( `optionVar -q "mtorRenderlPresetOpt_Ani"` == 1 ) {
+  	  $lines[$i++] = ("doAnim = " + `eval($mtorGet) "doAnim"` ); 
+  	  $lines[$i++] = ("computeStart = " + `eval($mtorGet) "computeStart"` ); 
+  	  $lines[$i++] = ("computeStop = " + `eval($mtorGet) "computeStop"` ); 
+  	  $lines[$i++] = ("computeBy = " + `eval($mtorGet) "computeBy"` ); 
+  	  $lines[$i++] = ("computeOrder = " + `eval($mtorGet) "computeOrder"` ); 
+  	  $lines[$i++] = ("animFPS = " + `eval($mtorGet) "animFPS"` ); 
+  	  $lines[$i++] = ("sequenceStart = " + `eval($mtorGet) "sequenceStart"` );
+  	  $lines[$i++] = ("sequenceStop = " + `eval($mtorGet) "sequenceStop"` );
+  	  $lines[$i++] = ("referenceFrame = " + `eval($mtorGet) "referenceFrame"` );
+  	  $lines[$i++] = ("preFrameScript = " + `eval($mtorGet) "preFrameScript"` );
+  	  $lines[$i++] = ("postFrameScript = " + `eval($mtorGet) "postFrameScript"` );
+  	}
+  	// "Image quality"
+  	if( `optionVar -q "mtorRenderlPresetOpt_ImgQty"` == 1 ) {
+  	  $lines[$i++] = ("shadingRate = " + `eval($mtorGet) "shadingRate"` );
+  	  $lines[$i++] = ("pixelSamplesX = " + `eval($mtorGet) "pixelSamplesX"` );
+  	  $lines[$i++] = ("pixelSamplesY = " + `eval($mtorGet) "pixelSamplesY"` );
+  	  $lines[$i++] = ("pixelFilter = " + `eval($mtorGet) "pixelFilter"` );
+  	  $lines[$i++] = ("filterWidthX = " + `eval($mtorGet) "filterWidthX"` );
+  	  $lines[$i++] = ("filterWidthY = " + `eval($mtorGet) "filterWidthY"` );
+  	  $lines[$i++] = ("shadingInterp = " + `eval($mtorGet) "shadingInterp"` );
+  	  $lines[$i++] = ("binaryDice = " + `eval($mtorGet) "binaryDice"` );
+  	  $lines[$i++] = ("shadowBias = " + `eval($mtorGet) "shadowBias"` );
+  	  $lines[$i++] = ("eyeSplits = " + `eval($mtorGet) "eyeSplits"` );
+  	  $lines[$i++] = ("motionFactor = " + `eval($mtorGet) "motionFactor"` );
+		}
+		// "Camera options"
+		if( `optionVar -q "mtorRenderlPresetOpt_CamOpt"` == 1 ) {
+  	  $lines[$i++] = ("doDOF = " + `eval($mtorGet) "doDOF"` );
+  	  $lines[$i++] = ("dofUseLookat = " + `eval($mtorGet) "dofUseLookat"` );
+  	  $lines[$i++] = ("doMotionBlur = " + `eval($mtorGet) "doMotionBlur"` );
+  	  $lines[$i++] = ("blurSubframe = " + `eval($mtorGet) "blurSubframe"` );
+  	  $lines[$i++] = ("blurCamera = " + `eval($mtorGet) "blurCamera"` );
+  	  $lines[$i++] = ("shutterAngle = " + `eval($mtorGet) "shutterAngle"` );
+  	  $lines[$i++] = ("shutterTiming = " + `eval($mtorGet) "shutterTiming"` );
+  	  $lines[$i++] = ("shutterConfig = " + `eval($mtorGet) "shutterConfig"` );
+  	  $lines[$i++] = ("frontPlane = " + `eval($mtorGet) "frontPlane"` );
+  	  $lines[$i++] = ("backPlane = " + `eval($mtorGet) "backPlane"` );
+		}
+		// "Image settings"
+		if( `optionVar -q "mtorRenderlPresetOpt_ImgOpt"` == 1 ) {
+  	  $lines[$i++] = ("dspyQuantizeMode = " + `eval($mtorGet) "dspyQuantizeMode"` );
+  	  $lines[$i++] = ("dspyQuantizeOne = " + `eval($mtorGet) "dspyQuantizeOne"` );
+  	  $lines[$i++] = ("dspyQuantizeMin = " + `eval($mtorGet) "dspyQuantizeMin"` );
+  	  $lines[$i++] = ("dspyQuantizeMax = " + `eval($mtorGet) "dspyQuantizeMax"` );
+  	  $lines[$i++] = ("dspyQuantizeDither = " + `eval($mtorGet) "dspyQuantizeDither"` );
+  	  $lines[$i++] = ("dspyGain = " + `eval($mtorGet) "dspyGain"` );
+  	  $lines[$i++] = ("dspyGamma = " + `eval($mtorGet) "dspyGamma"` );
+  	  $lines[$i++] = ("dspyBucketX = " + `eval($mtorGet) "dspyBucketX"` );
+  	  $lines[$i++] = ("dspyBucketY = " + `eval($mtorGet) "dspyBucketY"` );
+  	  $lines[$i++] = ("dspyGrid = " + `eval($mtorGet) "dspyGrid"` );
+  	  $lines[$i++] = ("hider = " + `eval($mtorGet) "hider"` );
+  	  $lines[$i++] = ("jitter = " + `eval($mtorGet) "jitter"` );
+  	}  
+  	// "Raytrace options"
+  	if( `optionVar -q "mtorRenderlPresetOpt_Trc"` == 1 ) { 
+  	  $lines[$i++] = ("rayTrace = " + `eval($mtorGet) "rayTrace"` );
+  	  $lines[$i++] = ("traceBreadthSampleFactor = " + `eval($mtorGet) "traceBreadthSampleFactor"` );
+  	  $lines[$i++] = ("traceDepthSampleFactor = " + `eval($mtorGet) "traceDepthSampleFactor"` );
+  	  $lines[$i++] = ("traceMaxDepth = " + `eval($mtorGet) "traceMaxDepth"` );
+  	  $lines[$i++] = ("traceSpecularThreshold = " + `eval($mtorGet) "traceSpecularThreshold"` );
+  	  $lines[$i++] = ("traceMaxSpecularDepth = " + `eval($mtorGet) "traceMaxSpecularDepth"` );
+  	  $lines[$i++] = ("traceMaxDiffuseDepth = " + `eval($mtorGet) "traceMaxDiffuseDepth"` );
+  	  $lines[$i++] = ("traceBias = " + `eval($mtorGet) "traceBias"` );
+  	  $lines[$i++] = ("traceDisplacements = " + `eval($mtorGet) "traceDisplacements"` );
+  	  $lines[$i++] = ("traceSampleMotion = " + `eval($mtorGet) "traceSampleMotion"` );
+  	  $lines[$i++] = ("irradianceMaxError = " + `eval($mtorGet) "irradianceMaxError"` );
+  	  $lines[$i++] = ("irradianceMaxPixelDist = " + `eval($mtorGet) "irradianceMaxPixelDist"` );
+  	  $lines[$i++] = ("irradianceHandle = " + `eval($mtorGet) "irradianceHandle"` );
+  	  $lines[$i++] = ("irradianceFileMode = " + `eval($mtorGet) "irradianceFileMode"` );
+  	  $lines[$i++] = ("photonShadingModel = " + `eval($mtorGet) "photonShadingModel"` );
+  	  $lines[$i++] = ("photonCausticMap = " + `eval($mtorGet) "photonCausticMap"` );
+  	  $lines[$i++] = ("photonGlobalMap = " + `eval($mtorGet) "photonGlobalMap"` );
+  	  $lines[$i++] = ("photonEstimator = " + `eval($mtorGet) "photonEstimator"` );
+  	}
+  	// "Spool job setup"
+  	if( `optionVar -q "mtorRenderlPresetOpt_Job"` == 1 ) { 
+  	  $lines[$i++] = ("jobChunkSize = " + `eval($mtorGet) "jobChunkSize"` );
+  	  $lines[$i++] = ("superframeCount = " + `eval($mtorGet) "superframeCount"` );
+  	  $lines[$i++] = ("RIBGen = " + `eval($mtorGet) "RIBGen"` );
+  	  $lines[$i++] = ("RIBFormat = " + `eval($mtorGet) "RIBFormat"` );
+  	  $lines[$i++] = ("computeLocation = " + `eval($mtorGet) "computeLocation"` );
+  	  $lines[$i++] = ("renderer = " + `eval($mtorGet) "renderer"` );
+  	  $lines[$i++] = ("imager = " + `eval($mtorGet) "imager"` );
+  	}
+  	// "Alfred options"
+  	if( `optionVar -q "mtorRenderlPresetOpt_Alf"` == 1 ) { 
+  	  $lines[$i++] = ("alfPause = " + `eval($mtorGet) "alfPause"` );
+  	  $lines[$i++] = ("alfSvc = " + `eval($mtorGet) "alfSvc"` );
+  	  $lines[$i++] = ("alfTag = " + `eval($mtorGet) "alfTag"` );
+  	  $lines[$i++] = ("alfNRMMin = " + `eval($mtorGet) "alfNRMMin"` );
+  	  $lines[$i++] = ("alfNRMMax = " + `eval($mtorGet) "alfNRMMax"` );
+  	  $lines[$i++] = ("alfEnvKey = " + `eval($mtorGet) "alfEnvKey"` );
+  	  $lines[$i++] = ("alfRendererArgs = " + `eval($mtorGet) "alfRendererArgs"` );
+  	  $lines[$i++] = ("alfWhenDoneCmd = " + `eval($mtorGet) "alfWhenDoneCmd"` );
+  	  $lines[$i++] = ("alfWhenErrorCmd = " + `eval($mtorGet) "alfWhenErrorCmd"` );
+  	}
+  	// "Custom options"
+  	if( `optionVar -q "mtorRenderlPresetOpt_Cstm"` == 1 ) { 
+  	  $lines[$i++] = ("customRenderer = " + `eval($mtorGet) "customRenderer"` );
+  	  $lines[$i++] = ("customRenderSvc = " + `eval($mtorGet) "customRenderSvc"` );
+  	  $lines[$i++] = ("customRenderTag = " + `eval($mtorGet) "customRenderTag"` );
+  	  $lines[$i++] = ("customImager = " + `eval($mtorGet) "customImager"` );
+  	  $lines[$i++] = ("customImageSvc = " + `eval($mtorGet) "customImageSvc"` );
+  	  $lines[$i++] = ("customImageTag = " + `eval($mtorGet) "customImageTag"` );
+  	  $lines[$i++] = ("customPreRenderCmd = " + `eval($mtorGet) "customPreRenderCmd"` );
+  	  $lines[$i++] = ("customPreRenderSvc = " + `eval($mtorGet) "customPreRenderSvc"` );
+  	  $lines[$i++] = ("customPreRenderTag = " + `eval($mtorGet) "customPreRenderTag"` );
+  	}
+  	// "Acceleration"
+  	if( `optionVar -q "mtorRenderlPresetOpt_Acc"` == 1 ) { 
+  	  $lines[$i++] = ("convertTextures = " + `eval($mtorGet) "convertTextures"` );
+  	  $lines[$i++] = ("computedMaps = " + `eval($mtorGet) "computedMaps"` );
+  	  $lines[$i++] = ("lazyCompute = " + `eval($mtorGet) "lazyCompute"` );
+  	  $lines[$i++] = ("objectsOnly = " + `eval($mtorGet) "objectsOnly"` );
+  	  $lines[$i++] = ("lightsOnly = " + `eval($mtorGet) "lightsOnly"` );
+  	  $lines[$i++] = ("selectedSet = " + `eval($mtorGet) "selectedSet"` );
+  	  $lines[$i++] = ("zealousCaching = " + `eval($mtorGet) "zealousCaching"` );
+  	  $lines[$i++] = ("doCrop = " + `eval($mtorGet) "doCrop"` );
+  	  $lines[$i++] = ("cropWinXMin = " + `eval($mtorGet) "cropWinXMin"` );
+  	  $lines[$i++] = ("cropWinXMax = " + `eval($mtorGet) "cropWinXMax"` );
+  	  $lines[$i++] = ("cropWinYMin = " + `eval($mtorGet) "cropWinYMin"` );
+  	  $lines[$i++] = ("cropWinYMax = " + `eval($mtorGet) "cropWinYMax"` );
+  	}  
+  	// "Job cleanup"
+  	if( `optionVar -q "mtorRenderlPresetOpt_Cln"` == 1 ) { 
+  	  $lines[$i++] = ("jobCleanup = " + `eval($mtorGet) "jobCleanup"` );
+  	}
+  	// "Secondary displays"
+  	if( `optionVar -q "mtorRenderlPresetOpt_AOV"` == 1 ) { 
+  	  $lines[$i++] = ("dspyPrimaryOnly = " + `eval($mtorGet) "dspyPrimaryOnly"` );
+  	  string $dspyID[], $dspyIDs = `slimcmd rmanctl GetDspyIDs`; // get AOV identifiers
+  	  int $num = tokenize( $dspyIDs, $dspyID );
+  	  for ( $d in $dspyID ) {
+  	    if ( $d != "" ) {
+  	      int $j = 0, $id = $d;
+  	      string $aov_values[];
+  	      string $name, $aov_names[] = { 
+            "dspyName", "dspyType", "dspyMode", "dspyPixelFilter", "dspyFilterWidthX", "dspyFilterWidthY", 
+            "dspyQuantize", "dspyZero", "dspyOne", "dspyMin", "dspyMax", "dspyDither" 
+            };
+          AOV_array( $id, $aov_values, true ); // get values to array 
+          for ( $name in $aov_names ) {
+            $lines[$i++] = ( $name + "_" + $id + " = " + $aov_values[$j++] );
+          }
+  	    }  
+  	  }
+  	}
+  	  
+		string $projDir = `workspace -q -rootDirectory`;
+    string $presetName = ( $projDir + $preset + ".rg" );
+		mtorWritePresetFile( $presetName, $lines );  
+		mtorRefreshLocalPresetsMenu ( $localMenu );
+	  deleteUI -window mtorSaveLocalPresetWin;	
+	}
+}
+//===========================================================================================
+//
+//===========================================================================================
+global proc mtorSaveLocalPreset( string $localMenu ) {
+  int $cw1 = 70, $cw2 = 200;
+  if ( `window -exists mtorSaveLocalPresetWin` ) 
+	 	deleteUI -window mtorSaveLocalPresetWin;
+  window -widthHeight 100 30 -rtf true -title "Save local preset..." mtorSaveLocalPresetWin;
+  	string $form = `formLayout -numberOfDivisions 100`;  
+	    string $column = `columnLayout -adjustableColumn true`;
+	      textFieldGrp -cw 1 70 -cal 1 "right" -adj 2 -label "Preset name" mtorSaveLocalPresetTxFld;
+	    	frameLayout -li 4 -mh 2 -bv true -bs etchedIn -cll false -cl false -l "Save options";
+  			  columnLayout -cat both 4 -adj true -rowSpacing 0;
+  			    int $i, $val;
+  			    string $opt_labels[] = {"Display name", "Camera name", "Context", "Display options", "Resolution", "Animations", "Secondary displays", 
+  			                            "Image quality", "Camera options", "Image settings", "Raytrace options", "Spool job setup", "Alfred options", 
+  			                            "Custom options", "Acceleration", "Job cleanup"  };
+  			    string $c, $opt_chk[] = {"DspyName", "CamName", "Cntx", "DspyOpt", "Res", "Ani", "AOV", 
+  			                            "ImgQty", "CamOpt", "ImgOpt", "Trc", "Job", "Alf", "Cstm", "Acc", "Cln"  };
+  			    
+  			    for ( $c in $opt_chk ) {
+    			    string $opt_var_name = "mtorRenderlPresetOpt_" + $c;
+    			    
+    			    if( `optionVar -ex $opt_var_name` ) {
+          			$val =`optionVar -q $opt_var_name`;
+          		} else {
+          			$val = true;
+          			optionVar -iv $opt_var_name $val;
+          		}
+          	  checkBoxGrp  -cw 1 $cw1 -cw 2 $cw2 -l "" -l1 $opt_labels[$i++] -v1 $val -cc ( "optionVar -sv " + $opt_var_name + " #1" ) $opt_var_name;
+          	}
+	        setParent ..;
+	      setParent ..;
+	    setParent ..;
+		  string $ok_btn = `button -label "Ok" -c ( "mtorSaveLocalPresetOk " + $localMenu )`;
+		  string $cancel_btn = `button -label "Cancel" -c ( "deleteUI -window mtorSaveLocalPresetWin" )`;
+	  setParent ..;
+	  formLayout -edit
+	  	-attachForm $column "top" 2	
+	  	-attachForm $column "left" 2	
+	  	-attachForm $column "right" 2
+	  	-attachForm $ok_btn "bottom" 2
+	  	-attachForm $cancel_btn "bottom" 2
+	  	-attachForm $cancel_btn "right" 2
+	  	-attachForm $ok_btn "left" 2
+	  	-attachControl $column "bottom" 2 $ok_btn 
+	  	-attachControl $cancel_btn "left" 2 $ok_btn
+	  	-attachPosition $ok_btn "right" 1 50 
+	  $form;
+  showWindow mtorSaveLocalPresetWin;
+}
+//===========================================================================================
+//
+//===========================================================================================
+global proc mtorLoadLocalPreset( string $preset ) {
+  global string $mtorSet; 
+  string $projDir = `workspace -q -rootDirectory`;
+  string $presetName = ( $projDir + $preset + ".rg" );
+  string $lines[];
+  if ( mtorReadPresetFile( $presetName, $lines ) ) { 
+    int $i;
+    for ( $i = 0 ; $i < size( $lines ) ; $i++ ) {
+      string $tokens[];
+      if ( tokenize( $lines[$i],"=", $tokens ) ) {
+        string $name = strip( $tokens[0] );
+        string $value = strip( $tokens[1] );
+        eval( $mtorSet + $name + " -value " + "\"" + $value + "\"");
+      }
+    }
+    mtorRenderUI();  
+  }
+}
+//===========================================================================================
+//
+//===========================================================================================
+global proc string mtorRenderGetMayaSceneName() {
+	string $fullname = `file -q -a`;
+	string $name = basename( $fullname, "" );
+	string $tokens[];
+	tokenize( $name, ".", $tokens );
+	return $tokens[0];
+}
+//===========================================================================================
+global proc string mtorRenderBrowseFile( string $dirMask ) {
+	string $root = `workspace -q -rootDirectory`;
+	string $tempStr = `fileDialog -directoryMask $dirMask`;
+	$tempStr = `workspace -pp $tempStr`; //  projectPath expandName
+	return 	fromNativePath( $tempStr);
+} 
+//===========================================================================================
+global proc mtorRenderSetDirField( string $fieldName, string $newDir, string $type ) {
+	string $root = `workspace -q -rootDirectory`;
+	string $tempStr = `workspace -pp $newDir`; //  projectPath expandName
+	textFieldButtonGrp -e -tx (`fromNativePath $tempStr`) $fieldName;
+}
+//===========================================================================================
+global proc string mtorRenderBrowseDir( string $fieldName, string $ann ) {
+	string $root = `workspace -q -rootDirectory`; // chdir $root;
+	string $tempStr = `fileBrowserDialog -m 4 -ft directory -fc ( "mtorRenderSetDirField " + $fieldName ) -an $ann`;
+	return 	$tempStr;
+}
+//===========================================================================================
+// Show common controls procedures
+//===========================================================================================
+global proc string mtorShowString( string $rg_name, string $label ) {
+global string $mtorGet;
+global string $mtorSet;
+  int $cw1 = 120, $cw2 = 50;
+  string $rg_value = `eval($mtorGet) $rg_name`;
+  string $fieldName = `textFieldGrp -cw 1 $cw1  -adj 2 -label $label -text $rg_value`; 
+	textFieldGrp -e -cc ( $mtorSet + $rg_name + " -value " + "\"#1\"" ) $fieldName;
+  return $fieldName;
+}
+//===========================================================================================
+global proc string mtorShowBrowseFile( string $rg_name, string $label, string $dirMask ) {
+global string $mtorGet;
+global string $mtorSet;
+  int $cw1 = 120, $cw2 = 50;
+  string $rg_value = `eval($mtorGet) $rg_name`;
+  string $fieldName = `textFieldButtonGrp -cw 1 $cw1 -cw 2 $cw1 -cw 3 $cw2 -adj 2 -label $label -bl " Browse " -text $rg_value`; 
+		textFieldButtonGrp -e -cc ( $mtorSet + $rg_name + " -value " + "\"#1\"" ) 
+				-bc ("{string $tmp = \`mtorRenderBrowseFile \"" + $dirMask +"\"\`; if( $tmp != \"\" ){" + $mtorSet + $rg_name + " -value " + "$tmp; textFieldButtonGrp -e -text $tmp " + $fieldName + "; }}" )
+				$fieldName;
+  return $fieldName;
+}
+//===========================================================================================
+global proc string mtorShowOptionMenu( string $rg_name, string $label, string $items[], int $useIdx, int $noteQuickLaunch ) {
+global string $mtorGet;
+global string $mtorSet;
+  int $cw1 = 120, $cw2 = 50;
+  string $rg_value = `eval($mtorGet) $rg_name`;
+  string $menuName = `optionMenuGrp -cw 1 $cw1 -label $label -cal 1 "right" `;
+  string $i, $cmd;
+  
+  for ( $i in $items ) 
+    menuItem -label $i;
+  
+  if ( $useIdx ) {
+    $cmd = $mtorSet + $rg_name + " -value " + "(\`optionMenuGrp -q -sl " + $menuName +"\` - 1) "; 
+    int $rg_idx = $rg_value;
+    optionMenuGrp -e -sl ( $rg_idx + 1 ) -cc $cmd $menuName;
+  } else {
+    $cmd = $mtorSet + $rg_name + " -value " + "\"#1\";"; 
+    if ( $noteQuickLaunch ) 
+      $cmd += "QuickLaunchBarUpdate";
+    optionMenuGrp -e -v $rg_value -cc $cmd $menuName;
+  }
+  return $menuName;
+}
+//===========================================================================================
+global proc string mtorShowCheckBox( string $rg_name, string $label, int $noteQuickLaunch ) {
+global string $mtorGet;
+global string $mtorSet;
+  int $cw1 = 120, $cw2 = 50;
+  int $rg_value = `eval($mtorGet) $rg_name`;
+  $fieldName = `checkBoxGrp -cw 1 $cw1 -cw 2 ($cw1*2) -l $label -v1 $rg_value`;
+  string $cmd = $mtorSet + $rg_name + " -value " + "#1;"; 
+  if ( $noteQuickLaunch ) 
+    $cmd += "QuickLaunchBarUpdate";
+	checkBoxGrp -e -cc $cmd $fieldName; 
+  return $fieldName;
+}
+//===========================================================================================
+global proc string mtorShowIntGrp( string $rg_names[], string $label, int $noteQuickLaunch  ) {
+global string $mtorGet;
+global string $mtorSet;
+  int $cw1 = 120, $cw2 = 50;
+  int $i, $rg_values[], $num = size($rg_names);
+  string $cmd = "";
+  $fieldName = `intFieldGrp -cw 1 $cw1 -nf $num  -label $label`;
+  for ( $i = 0; $i < $num ; $i++ ) {
+    $rg_values[$i] = `eval($mtorGet) $rg_names[$i]`;
+    eval( "intFieldGrp -e -cw " + ( $i + 2 ) + " " + $cw2 + " -v" + ( $i + 1 ) + " " + $rg_values[$i] + " " + $fieldName );
+    $cmd += $mtorSet + $rg_names[$i] + " -value " + "#" + ( $i + 1 ) + ";";
+  } 
+  if ( $noteQuickLaunch ) 
+    $cmd += "QuickLaunchBarUpdate"; 
+  intFieldGrp -e -cc $cmd $fieldName;
+  return $fieldName;
+}
+//===========================================================================================
+global proc string mtorShowFloatGrp( string $rg_names[], string $label, int $presision ) {
+global string $mtorGet;
+global string $mtorSet;
+  int $cw1 = 120, $cw2 = 50;
+  int $i, $num = size($rg_names);
+  float $rg_values[];
+  string $cmd = "";
+  $fieldName = `floatFieldGrp -cw 1 $cw1 -nf $num -pre $presision -label $label`;
+  for ( $i = 0; $i < $num ; $i++ ) {
+    $rg_values[$i] = `eval($mtorGet) $rg_names[$i]`;
+    eval( "floatFieldGrp -e -cw " + ( $i + 2 ) + " " + $cw2 + " -v" + ( $i + 1 ) + " " + $rg_values[$i] + " " + $fieldName );
+    $cmd += $mtorSet + $rg_names[$i] + " -value " + "#" + ( $i + 1 ) + ";";
+  }  
+  floatFieldGrp -e -cc $cmd $fieldName;
+  return $fieldName;
+}
+//===========================================================================================
+//
+//===========================================================================================
+proc ShowDisplay() {
+global string $mtorGet;
+global string $mtorSet;
+global string $mtorQuickLaunchBarControls[];
+global string $mtorResList[];
+global int $oldRes[2];
+	int $cw1 = 120, $cw2 = 50;
+	string $fieldName, $menuName;	
+	$fieldName = mtorShowString( "contextString", "Context" ); 
+	$mtorQuickLaunchBarControls[0] = mtorShowOptionMenu( "dspyServer", "Display Server", { "it","combiner","framebuffer","file","tiff","cineon","alias","mayaiff","targa","sgif","picio","softimage","null"	}, false, true ); 
+	$fieldName = mtorShowOptionMenu( "dspyServerMode", "Display Mode", { "rgb","rgba","rgbaz","rgbz","z" }, false, false ); 
+	$fieldName = mtorShowOptionMenu( "dspyUnique", "\"it\" reuse framebuffer", { "Always","Crop Only","Never"	}, true, false ); 
+			
+	frameLayout -li 4 -mh 2 -bv true -bs etchedIn -cll true -cl false -l "Resolution";
+		columnLayout -cat both 4 -adj true -rowSpacing 0;
+      int $maintainWiHiRatio = false;
+    	int $lockDeviceAspect = false;
+    	int $formatWidth = `eval($mtorGet) "dspyFormatX"`;
+    	int $formatHeight = `eval($mtorGet) "dspyFormatY"`;
+    	float $pixelRatio = `eval($mtorGet) "pixelRatio"`;
+      // clear $mtorResList;
+			if ( size($mtorResList) == 0  ) {
+				$mtorResList = {
+					"Custom...", 	0, 	0, 	1,	1
+					,"(Maya globals)",0, 	0, 	1,	1
+					,"320x240",	320,	240,	1,	1.33333
+					,"640x480",	640,	480,	1,	1.33333
+					,"800x600",	800,	600,	1,	1.33333
+					,"1024x768",	1024,	768,	1,	1.33333
+					,"PAL 768x576",	768,	576,	1,	1.33333
+					,"PAL 720x576",	720,	576,	1.066,	1.33333
+				};
+			}		
+			$menuName = `optionMenuGrp -cw 1 $cw1 -label "Resolution" -cal 1 "right" -cc "" `;
+			for ( $i = 0; $i < size($mtorResList) ; $i+=5 ) {
+				menuItem -label $mtorResList[$i] ;
+			}
+			string $maintainRatioFld = `checkBoxGrp -cw 1 $cw1 -cw 2 ($cw1*2) -l "" -l1 "Maintain Width/Height Ratio" -v1 $maintainWiHiRatio`;
+			string $resolutionFld = mtorShowIntGrp( { "dspyFormatX", "dspyFormatY" }, "Width, height", false );
+			$oldRes[0] = $formatWidth;
+			$oldRes[1] = $formatHeight;
+			string $lockDeviceAspectFld = `checkBoxGrp -cw 1 $cw1 -cw 2 ($cw1*2) -l "" -l1 "Lock Device Aspect" -v1 $lockDeviceAspect`;
+			float $deviceAspect = ( (float) `intFieldGrp -q -v1 $resolutionFld` )/( (float) `intFieldGrp -q -v2 $resolutionFld` );
+			string $deviceAspectFld = `floatFieldGrp -cw 1 $cw1 -cw 2 $cw2   -label "Device Aspect Ratio" -v1 $deviceAspect -pre 5`;
+			$fieldName = mtorShowFloatGrp( { "pixelRatio" }, "Pixel Aspect Ratio", 5 );
+			intFieldGrp -e -cc ( "mtorRenderSetResolution " + $resolutionFld + " " + $maintainRatioFld + " " + $deviceAspectFld  ) $resolutionFld;
+			optionMenuGrp -e -cc ( "mtorRenderGetResolution " + $resolutionFld + " " + $fieldName + " " + $deviceAspectFld + " " + $menuName ) $menuName;
+			setParent ..;
+			setParent ..;
+			//===========================================================================================
+			//  Animation
+			frameLayout -li 4 -mh 2 -bv true -bs etchedIn -cll true -cl true -l "Animation";
+  			columnLayout -cat both 4 -adj true -rowSpacing 0;
+  			$mtorQuickLaunchBarControls[2] = mtorShowCheckBox( "doAnim", "Do Animation", true );
+  			$mtorQuickLaunchBarControls[10] = mtorShowIntGrp( { "computeStart", "computeStop", "computeBy" }, "Compute Start/Stop/By", true );
+  			$fieldName = mtorShowOptionMenu( "computeOrder", "Compute Order", { "counting","binary" }, false, false ); 
+  			$fieldName = mtorShowFloatGrp( { "animFPS" }, "Frames/Second", 2 );
+  			$fieldName = mtorShowIntGrp( { "sequenceStart", "sequenceStop" }, "Sequence Start/Stop", false );
+  			$fieldName = mtorShowFloatGrp( { "referenceFrame" }, "Reference Frame", 0 );
+  			 
+				frameLayout -li 4 -mh 2 -bv true -bs etchedIn -cll true -cl true -l "MEL Scripts";
+				columnLayout -cat both 4 -adj true -rowSpacing 0;
+					$fieldName = mtorShowString( "preFrameScript", "Pre Frame Script" ); 
+					$fieldName = mtorShowString( "postFrameScript", "Post Frame Script" ); 
+				setParent ..;
+				setParent ..;
+			  
+			setParent ..;
+		setParent ..;	
+}
+//===========================================================================================
+//
+//===========================================================================================
+proc ShowOptions() {
+global string $mtorQuickLaunchBarControls[];	
+global string $mtorGet;
+global string $mtorSet;
+	int $i, $cw1 = 120, $cw2 = 50;
+	string $s,$fieldName,$menuName;
+	$fieldName = mtorShowFloatGrp( { "shadingRate" }, "Shading Rate", 3 );
+	$fieldName = mtorShowIntGrp( { "pixelSamplesX", "pixelSamplesY" }, "Pixel Samples", false);
+	$fieldName = mtorShowOptionMenu( "pixelFilter", "Pixel Filter", { "box","triangle","catmull-rom","sinc","gaussian","mitchell","separable-catmull-rom","blackman-harris" }, false, false ); 
+	$fieldName = mtorShowIntGrp( { "filterWidthX", "filterWidthY" }, "Filter Width", false);
+  $fieldName = mtorShowCheckBox( "shadingInterp", "Shading Interpolation", false );
+	$fieldName = mtorShowCheckBox( "binaryDice", "Binary dicing", false );
+	$fieldName = mtorShowFloatGrp( { "shadowBias" }, "Shadow Bias", 5 );
+	$fieldName = mtorShowIntGrp( { "eyeSplits" }, "Eye Splits",false);
+	$fieldName = mtorShowFloatGrp( { "motionFactor" }, "Motion Factor", 0 );
+	//===========================================================================================
+  //  Camera
+	frameLayout -li 4 -mh 2 -bv true -bs etchedIn -cll true -cl true -l "Camera";
+	  columnLayout -cat both 4 -adj true -rowSpacing 0;
+		$fieldName = mtorShowCheckBox( "doDOF", "Depth of Field", false );
+		$fieldName = mtorShowCheckBox( "dofUseLookat", "Focus on Lookat", false );
+		$mtorQuickLaunchBarControls[4] = mtorShowCheckBox( "doMotionBlur", "Motion Blur", true );
+		$fieldName = mtorShowCheckBox( "blurSubframe", "Subframe Motion", false );
+		$fieldName = mtorShowCheckBox( "blurCamera", "Blur Camera", false );
+		$fieldName = mtorShowIntGrp( { "shutterAngle" }, "Shutter Angle",false);
+		$fieldName = mtorShowOptionMenu( "shutterTiming", "Shutter Timing", { "frameOpen","frameCenter" }, false, false ); 
+	  $fieldName = mtorShowOptionMenu( "shutterConfig", "Shutter Config", { "moving","stationary" }, false, false ); 
+		$fieldName = mtorShowCheckBox( "frontPlane", "Front Plane", false );
+    $mtorQuickLaunchBarControls[3] = mtorShowCheckBox( "backPlane", "Back Plane", true );
+		setParent ..;	
+	setParent ..;	
+  //===========================================================================================
+  //  Image settings
+	frameLayout -li 4 -mh 2 -bv true -bs etchedIn -cll true -cl true -l "Image settings";
+		columnLayout -cat both 4 -adj true -rowSpacing 0;
+		$fieldName = mtorShowOptionMenu( "dspyQuantizeMode", "Quantize Mode", { "none","rgb","rgba","z" }, false, false ); 
+		$fieldName = mtorShowFloatGrp( { "dspyQuantizeOne","dspyQuantizeMin","dspyQuantizeMax","dspyQuantizeDither" }, "One/Min/Max/Dither", 2 );
+		
+		$menuName = `popupMenu -p $fieldName`;
+	  for ( $s in {"color 8 bpp","color 16 bpp","float 32 bit"} ) {
+				menuItem -label $s -c ( "mtorQuantizePresets " + $fieldName + " " + ($i++) + " \"\";" );
+		}
+				
+		$fieldName = mtorShowFloatGrp( { "dspyGain","dspyGamma" }, "Image Gain/Gamma", 3 );	
+		$fieldName = mtorShowIntGrp( { "dspyBucketX","dspyBucketY" }, "Bucket Size", false);
+		$fieldName = mtorShowIntGrp( { "dspyGrid" }, "Grid Size", false);	
+		$fieldName = mtorShowOptionMenu( "hider", "Hider", { "hidden","zbuffer","photon" }, false, false ); 
+		$fieldName = mtorShowCheckBox( "jitter", "Jitter", false );				
+		setParent ..;
+	setParent ..;	
+}
+//===========================================================================================
+global proc mtorQuantizePresets( string $control, int $item , string $secondary_list ) {
+global string $mtorSet;
+  if ( $secondary_list == "" ) { // in case for primary display Quantize control 
+    switch( $item ) {
+      case 0: 
+        floatFieldGrp -e -v1 255.0 -v2 0.0 -v3 255.0 -v4 0.5 $control; 
+        eval( $mtorSet + "dspyQuantizeOne -value 255.0" );
+        eval( $mtorSet + "dspyQuantizeMin -value 0.0" );
+        eval( $mtorSet + "dspyQuantizeMax -value 255.0" );
+        eval( $mtorSet + "dspyQuantizeDither -value 0.5" );
+        break;
+      
+      case 1: 
+        floatFieldGrp -e -v1 65535.0 -v2 0.0 -v3 65535.0 -v4 0.5 $control; 
+        eval( $mtorSet + "dspyQuantizeOne -value 65535.0" );
+        eval( $mtorSet + "dspyQuantizeMin -value 0.0" );
+        eval( $mtorSet + "dspyQuantizeMax -value 65535.0" );
+        eval( $mtorSet + "dspyQuantizeDither -value 0.5" );
+        break;
+      
+      case 2: 
+        floatFieldGrp -e -v1 0.0 -v2 0.0 -v3 0.0 -v4 0.0 $control; 
+        eval( $mtorSet + "dspyQuantizeOne -value 0.0" );
+        eval( $mtorSet + "dspyQuantizeMin -value 0.0" );
+        eval( $mtorSet + "dspyQuantizeMax -value 0.0" );
+        eval( $mtorSet + "dspyQuantizeDither -value 0.0" );
+        break;  
+    }
+  } else {
+    string $disp[] = `textScrollList -q -si $secondary_list`;
+    if ( size( $disp ) ) {
+      int $disp_id = getDispID( $disp[0] );
+      switch( $item ) {
+        case 0: 
+          floatFieldGrp -e -v1 0.0 -v2 255.0 -v3 0.0 -v4 255.0 $control; 
+          eval( $mtorSet + "dspyZero_" + $disp_id + " -value 0.0" );
+          eval( $mtorSet + "dspyOne_" + $disp_id + " -value 255.0" );
+          eval( $mtorSet + "dspyMin_" + $disp_id + " -value 0.0" );
+          eval( $mtorSet + "dspyMax_" + $disp_id + " -value 255.0" );
+          break;
+        
+        case 1: 
+          floatFieldGrp -e -v1 0.0 -v2 65535.0 -v3 0.0 -v4 65535.0 $control; 
+          eval( $mtorSet + "dspyZero_" + $disp_id + " -value 0.0" );
+          eval( $mtorSet + "dspyOne_" + $disp_id + " -value 65535.0" );
+          eval( $mtorSet + "dspyMin_" + $disp_id + " -value 0.0" );
+          eval( $mtorSet + "dspyMax_" + $disp_id + " -value 65535.0" );
+          break;
+        
+        case 2: 
+          floatFieldGrp -e -v1 0.0 -v2 0.0 -v3 0.0 -v4 0.0 $control; 
+          eval( $mtorSet + "dspyZero_" + $disp_id + " -value 0.0" );
+          eval( $mtorSet + "dspyOne_" + $disp_id + " -value 0.0" );
+          eval( $mtorSet + "dspyMin_" + $disp_id + " -value 0.0" );
+          eval( $mtorSet + "dspyMax_" + $disp_id + " -value 0.0" );
+          break;  
+      } 
+    }
+  }
+}
+
+//===========================================================================================
+//
+//===========================================================================================
+proc ShowRaytrace() {
+global string $mtorGet;
+global string $mtorSet;
+global string $mtorQuickLaunchBarControls[];
+	int $cw1 = 120, $cw2 = 50;
+	string $fieldName, $menuName;	
+	$mtorQuickLaunchBarControls[5] = mtorShowCheckBox( "rayTrace", "Enable Ray Tracing", true );	
+	$fieldName = mtorShowFloatGrp( { "traceBreadthSampleFactor" }, "Breadth Sample Factor", 3 );
+	$fieldName = mtorShowFloatGrp( { "traceDepthSampleFactor" }, "Depth Sample Factor", 3 );
+	$fieldName = mtorShowIntGrp( { "traceMaxDepth" }, "Max Ray Depth", false );
+	$fieldName = mtorShowFloatGrp( { "traceSpecularThreshold" }, "Specular Threshold", 3 );
+	$fieldName = mtorShowIntGrp( { "traceMaxSpecularDepth" }, "Max Specular Depth", false );
+	$fieldName = mtorShowIntGrp( { "traceMaxDiffuseDepth" }, "Max Diffuse Depth", false );
+	$fieldName = mtorShowFloatGrp( { "traceBias" }, "Trace Bias", 3 );
+	$fieldName = mtorShowCheckBox( "traceDisplacements", "Trace Displacements", false );	
+	$fieldName = mtorShowCheckBox( "traceSampleMotion", "Trace Sample Motion", false );	
+	frameLayout -li 4 -mh 2 -bv true -bs etchedIn -cll true -cl true -l "Irradiance Cache";
+	columnLayout -cat both 4 -adj true -rowSpacing 0;
+	  $fieldName = mtorShowFloatGrp( { "irradianceMaxError" }, "Max Error", 3 );
+	  $fieldName = mtorShowFloatGrp( { "irradianceMaxPixelDist" }, "Max Pixel Distance", 3 );
+		$fieldName = mtorShowBrowseFile( "irradianceHandle", "Cache File", "*.tif;*.tex" );
+		$fieldName = mtorShowOptionMenu( "irradianceFileMode", "Cache File Mode", { "ignore","R","r","rw","w" }, false, false ); 						
+	  setParent ..;
+	setParent ..;	
+	frameLayout -li 4 -mh 2 -bv true -bs etchedIn -cll true -cl true -l "Photon Mapping";
+	  columnLayout -cat both 4 -adj true -rowSpacing 0;
+	  $fieldName = mtorShowOptionMenu( "photonShadingModel", "Shading Model", { "glass","water","chrome","matte","transparent" }, false, false ); 
+		$fieldName = mtorShowBrowseFile( "photonCausticMap", "Caustic Map", "*.tif;*.tex" );
+		$fieldName = mtorShowBrowseFile( "photonGlobalMap", "Global Map", "*.tif;*.tex" );
+		$fieldName = mtorShowIntGrp( { "photonEstimator" }, "Estimator", false );	
+	  setParent ..;
+	setParent ..;		
+}
+//===========================================================================================
+//
+//===========================================================================================
+proc ShowAcceleration() {
+global string $mtorGet;
+global string $mtorSet;
+global string $mtorQuickLaunchBarControls[];
+
+	int $cw1 = 120, $cw2 = 50;
+	string $fieldName;
+	$fieldName = mtorShowCheckBox( "convertTextures", "Auto Convert Textures", false );	
+	$fieldName = mtorShowOptionMenu( "computedMaps", "Computed Maps", { "use","ignore" }, false, false ); 	
+	$mtorQuickLaunchBarControls[6] = mtorShowOptionMenu( "lazyCompute", "Lazy Compute", { "off","maps","all" }, false, true ); 	
+	$fieldName = mtorShowCheckBox( "objectsOnly", "Selected Objects Only", false );	
+	$fieldName = mtorShowCheckBox( "lightsOnly", "With Selected Lights", false );	
+	$fieldName = mtorShowString( "selectedSet", "Select by Set" ); 
+	$fieldName = mtorShowCheckBox( "zealousCaching", "Zealous Caching", false );	
+	$fieldName = mtorShowCheckBox( "doCrop", "Crop Window", false );
+	$fieldName = mtorShowFloatGrp( { "cropWinXMin","cropWinXMax" }, "X min, max", 3 );
+	$fieldName = mtorShowFloatGrp( { "cropWinYMin","cropWinYMax" }, "Y min, max", 3 );
+	//===========================================================================================
+	//  Job Cleanup
+	frameLayout -li 4 -mh 2 -bv true -bs etchedIn -cll true -cl false -l "Job Cleanup";
+		columnLayout -cat both 4 -adj true -rowSpacing 0;
+		string $jobCleanup = `eval($mtorGet) "jobCleanup"`;
+		int $rib = false; //gmatch( $jobCleanup, "*rib*" );
+		int $tex = false; //gmatch( $jobCleanup, "*tex*" );
+		int $map = false; //gmatch( $jobCleanup, "*map*" ); 
+		int $jtex = false; //gmatch( $jobCleanup, "*jtex*" );
+		int $jmap = false; //gmatch( $jobCleanup, "*jmap*" );
+		string $t, $tokens[];
+		tokenize( $jobCleanup, $tokens );
+		for ( $t in $tokens ) {
+			if ( $t == "rib" ) $rib = true;
+			if ( $t == "tex" ) $tex = true;	
+			if ( $t == "map" ) $map = true;	
+			if ( $t == "jtex" ) $jtex = true;
+			if ( $t == "jmap" ) $jmap = true;		
+		}
+		//$fieldName = `textFieldGrp -cw 1 $cw1 -adj 2 -label "Job Cleanup" -text $jobCleanup`;
+		// textFieldGrp -e -cc ( $mtorSet + "jobCleanup" + " -value " + "\"#1\"" ) $fieldName;
+		$ribFld = `checkBoxGrp -cw 1 $cw1 -cw 2 ($cw1*2) -l "rib" -v1 $rib -l1 "rib files"`;
+		$mapFld = `checkBoxGrp -cw 1 $cw1 -cw 2 ($cw1*2) -l "map" -v1 $map -l1 "(once per frame) computed maps"`;
+		$texFld = `checkBoxGrp -cw 1 $cw1 -cw 2 ($cw1*2) -l "tex" -v1 $tex -l1 "(once per frame) textures"`;
+		$jmapFld = `checkBoxGrp -cw 1 $cw1 -cw 2 ($cw1*2) -l "jmap" -v1 $jmap -l1 "(once per job) computed maps"`;
+		$jtexFld = `checkBoxGrp -cw 1 $cw1 -cw 2 ($cw1*2) -l "jtex" -v1 $jtex -l1 "(once per job) textures"`;
+		checkBoxGrp -e -cc ( "setJobCleanup " +  $ribFld + " " + $mapFld + " " + $texFld + " " + $jmapFld + " " + $jtexFld ) $ribFld;
+		checkBoxGrp -e -cc ( "setJobCleanup " +  $ribFld + " " + $mapFld + " " + $texFld + " " + $jmapFld + " " + $jtexFld ) $mapFld;
+		checkBoxGrp -e -cc ( "setJobCleanup " +  $ribFld + " " + $mapFld + " " + $texFld + " " + $jmapFld + " " + $jtexFld ) $texFld;
+		checkBoxGrp -e -cc ( "setJobCleanup " +  $ribFld + " " + $mapFld + " " + $texFld + " " + $jmapFld + " " + $jtexFld ) $jmapFld;
+		checkBoxGrp -e -cc ( "setJobCleanup " +  $ribFld + " " + $mapFld + " " + $texFld + " " + $jmapFld + " " + $jtexFld ) $jtexFld;
+		setParent ..;
+	setParent ..;			
+}
+//===========================================================================================
+//
+//===========================================================================================
+proc ShowSpool() {
+global string $mtorQuickLaunchBarControls[];
+global string $mtorGet;
+global string $mtorSet;
+
+	int $cw1 = 120, $cw2 = 50;
+	string $fieldName;
+	$fieldName = mtorShowOptionMenu( "jobChunkSize", "Job Chunk Size", { "subframe","frame","superframe" }, false, false ); 
+	$fieldName = mtorShowIntGrp( { "superframeCount" }, "Superframe Count", false);	
+	$mtorQuickLaunchBarControls[7] = mtorShowOptionMenu( "RIBGen", "RIB Generation", { "immediate","deferred","distributed","distrender" }, false, true ); 
+	$fieldName = mtorShowOptionMenu( "RIBFormat", "RIB Format", { "ascii","binary","asciigzip","binarygzip" }, false, false ); 	
+	$mtorQuickLaunchBarControls[8] = mtorShowOptionMenu( "computeLocation", "Compute Location", { "local","remote","remote-samehost" }, false, true ); 
+	$mtorQuickLaunchBarControls[9] = mtorShowOptionMenu( "renderer", "Renderer", { "none","render","netrender","custom" }, false, true ); 	
+	$fieldName = mtorShowOptionMenu( "imager", "Imager", { "none","custom" }, false, false );
+	//===========================================================================================
+	//  Alfred
+	frameLayout -li 4 -mh 2 -bv true -bs etchedIn -cll true -cl true -l "Alfred";
+		columnLayout -cat both 4 -adj true -rowSpacing 0;
+		$fieldName = mtorShowCheckBox( "alfPause", "Start Alfred Paused", false );
+		$fieldName = mtorShowString( "alfSvc", "Job Server Attributes" ); 
+		$fieldName = mtorShowString( "alfTag", "Job Cmd Tags" ); 	
+    $mtorQuickLaunchBarControls[11] = mtorShowIntGrp( { "alfNRMMin", "alfNRMMax" }, "Processors Min/Max", true );	
+		$fieldName = mtorShowString( "alfEnvKey", "Environment Key" ); 	
+		  $fieldName = mtorShowString( "alfRendererArgs", "Renderer Arguments" ); 	
+		  $fieldName = mtorShowString( "alfWhenDoneCmd", "Job Done Command" ); 
+		  $fieldName = mtorShowString( "alfWhenErrorCmd", "Job Error Command" );
+		setParent ..;
+	setParent ..;	
+	//===========================================================================================
+	//  Custom
+	frameLayout -li 4 -mh 2 -bv true -bs etchedIn -cll true -cl true -l "Custom";
+		columnLayout -cat both 4 -adj true -rowSpacing 0;
+		$fieldName = mtorShowString( "customRenderer", "Renderer" );
+		$fieldName = mtorShowString( "customRenderSvc", "Rendering Service" );
+		$fieldName = mtorShowString( "customRenderTag", "Rendering Tags" );
+    $fieldName = mtorShowString( "customImager", "Imager" );
+		$fieldName = mtorShowString( "customImageSvc", "Imaging Service" );
+		$fieldName = mtorShowString( "customImageTag", "Imaging Tags" );
+			$fieldName = mtorShowString( "customPreRenderCmd", "Pre-Render Command" );
+			$fieldName = mtorShowString( "customPreRenderSvc", "Pre-Rendering Service" );
+			$fieldName = mtorShowString( "customPreRenderTag", "Pre-Rendering Tags" );
+		setParent ..;
+	setParent ..;	
+}
+//===========================================================================================
+//
+//===========================================================================================
+proc ShowAOV() {
+global string $mtorGet;
+global string $mtorSet;
+
+global string $mtorQuickLaunchBarControls[];
+global string $mtorAOVControls[];
+	int $i = 0, $cw1 = 120, $cw2 = 50, $disableAOV = false;
+	string $fieldName, $menuName, $cmd;	
+	$mtorQuickLaunchBarControls[1] = mtorShowCheckBox( "dspyPrimaryOnly", "Primary Display Only", true );	
+	rowLayout -numberOfColumns 2 -cw 1 $cw1 -adj 2 -cal 1 "right";
+		columnLayout -adj false -rowSpacing 2;
+  		string $buttons = `rowLayout -cw 1 22 -cw 2 24 -cw 3 24	-cw 4 22 -cw 5 24 -numberOfColumns 5`; // 
+    		string $btnAddDisp = `symbolButton -i "setEdAddCmd.xpm" -w 20 -h 20  -ann "Add secondary display"`;
+    		string $btnRemDisp = `symbolButton -i "setEdRemoveCmd.xpm" -w 20 -h 20  -ann "Remove secondary display"`;
+    		string $btnDupDisp = `symbolButton -i "setEdSelectNEMode.xpm" -w 20 -h 20  -ann "Duplicate secondary display"`;
+    		string $btnDisableDisp = `symbolButton -i "timeStop.xpm" -w 20 -h 20  -ann "Disable (set to NULL)"`;
+    		string $btnEnableDisp = `symbolButton -i "timePlay.xpm" -w 20 -h 20  -ann "Enable (set TIFF)"`;
+    		
+  		setParent ..;
+  		string $buttons2 = `rowLayout -cw 1 22 -cw 2 24 -numberOfColumns 2`; // 
+    		string $btnAOVpresetSave = `symbolButton -i "fileSave.xpm" -w 20 -h 20  -ann "Save presets"`; // 
+    		string $btnAOVpresetList = `symbolButton -i "listView.xpm" -w 20 -h 20  -ann "Select preset"`; // 
+  		setParent ..;
+		setParent ..;
+		
+    string $frame = `textScrollList -nr 8 -allowMultiSelection false`;
+  setParent ..;		
+	$mtorAOVControls[$i] = `textFieldGrp -cw 1 $cw1 -adj 2 -label "Name"`;
+	string $dspyNameField = $mtorAOVControls[$i]; // store dspyName control for save preset dialog
+	textFieldGrp -e -cc ( "changeAOV " + $frame + " dspyName " + "\"#1\";" ) $mtorAOVControls[$i++];
+	
+	$mtorAOVControls[$i] = `optionMenuGrp -cw 1 $cw1 -label "Type" -cal 1 "right" `;
+		menuItem -label "<none>";
+		menuItem -label "tiff";
+		menuItem -label "alias";
+		menuItem -label "file";
+		menuItem -label "null";
+	optionMenuGrp -e -cc ( "changeAOV " + $frame + " dspyType " + "\"#1\";" ) $mtorAOVControls[$i++];
+
+	$mtorAOVControls[$i] = `textFieldGrp -cw 1 $cw1 -adj 2 -label "Mode"`;
+	textFieldGrp -e -cc ( "changeAOV " + $frame + " dspyMode " + "\"#1\";" ) $mtorAOVControls[$i];
+	string $m, $mode_items[] = { 
+	  "varying point P","varying normal N","varying normal Ng","varying vector E","varying vector dPdu","varying vector dPdv",
+	  "varying float s","varying float t","varying float u","varying float v","varying float du","varying float dv","varying vector dPdtime",
+	  "varying color Cs","varying color Os","varying color Ci","varying color Oi","uniform float __CPUtime"  
+	};
+	$menuName = `popupMenu -p $mtorAOVControls[$i]`;
+	for ( $m in $mode_items )
+		menuItem -label $m -c ( "changeAOV " + $frame + " dspyMode \"" + $m + "\";textFieldGrp -e -text \"" + $m + "\" " + $mtorAOVControls[$i] );
+	$i++;
+
+	$mtorAOVControls[$i] = `optionMenuGrp -cw 1 $cw1 -label "Pixel Filter" -cal 1 "right" `;
+		menuItem -label "<none>";
+		menuItem -label "box";
+		menuItem -label "triangle";
+		menuItem -label "catmull-rom";
+		menuItem -label "sinc";
+		menuItem -label "gaussian";
+		menuItem -label "mitchell";
+		menuItem -label "separable-catmull-rom";
+		menuItem -label "blackman-harris";
+	optionMenuGrp -e -cc ( "changeAOV " + $frame + " dspyPixelFilter " + "\"#1\";" ) $mtorAOVControls[$i++];
+	
+	$mtorAOVControls[$i] = `floatFieldGrp -cw 1 $cw1 -cw 2 $cw2 -cw 3 $cw2 -nf 2 -label "Filter Width" -v1 0 -v2 0`; 
+	floatFieldGrp -e -cc ( 	"changeAOV " + $frame + " dspyFilterWidthX " + "\"#1\";" + 
+												  "changeAOV " + $frame + " dspyFilterWidthY " + "\"#2\";" ) $mtorAOVControls[$i++];
+												
+	$mtorAOVControls[$i] = `checkBoxGrp -cw 1 $cw1  -l "Quantize" -v1 0`;
+	checkBoxGrp -e -cc ( 	"changeAOV " + $frame + " dspyQuantize " + "\"#1\";"  ) $mtorAOVControls[$i++]; 
+	
+	$mtorAOVControls[$i] = `floatFieldGrp -cw 1 $cw1 -cw 2 $cw2 -cw 3 $cw2 -cw 4 $cw2 -cw 5 $cw2 -nf 4 -pre 2 -label "Zero/One/Min/Max" `;
+	floatFieldGrp -e -cc ( 	"changeAOV " + $frame + " dspyZero " + "\"#1\";" + 
+													"changeAOV " + $frame + " dspyOne " + "\"#2\";" + 
+													"changeAOV " + $frame + " dspyMin " + "\"#3\";" + 
+													"changeAOV " + $frame + " dspyMax " + "\"#4\";"  ) $mtorAOVControls[$i];
+	int $j = 0;
+	$menuName = `popupMenu -p $mtorAOVControls[$i]`;
+  for ( $s in {"color 8 bpp","color 16 bpp","float 32 bit"} ) {
+			menuItem -label $s -c ( "mtorQuantizePresets " + $mtorAOVControls[$i] + " " + ($j++) + " " + $frame );
+	}
+	$i++;
+						
+	$mtorAOVControls[$i] = `floatFieldGrp -cw 1 $cw1 -cw 2 $cw2  -nf 1 -pre 2 -label "Dither" `;
+	floatFieldGrp -e -cc ( "changeAOV " + $frame + " dspyDither " + "\"#1\";" ) $mtorAOVControls[$i++];
+	
+	string $name, $value;		
+	string $d, $dspyID[], $dspyIDs = `slimcmd rmanctl GetDspyIDs`; // get AOV identifiers
+	int $num = tokenize( $dspyIDs, $dspyID );
+	
+	for ( $d in $dspyID ) {
+		if ($d != "" ){
+			$name = "dspyName_" + $d;
+			$value = `slimcmd rmanctl GetValue $name`;
+			string $dspyType = "dspyType_" + $d;
+			string $dspyTypeValue = `slimcmd rmanctl GetValue $dspyType`;
+			string $label = "[" + $d + "] " + $dspyTypeValue + " " + $value;
+			textScrollList -e -append $label -selectItem $label $frame;
+		}
+	}
+	if ( $d != "" )
+		updateAOV( $frame );
+	textScrollList -e -sc ( "updateAOV " + $frame ) $frame;
+	symbolButton -e -c ( "addDisp " + $frame ) $btnAddDisp; 
+	symbolButton -e -c ( "remDisp " + $frame ) $btnRemDisp; 
+	symbolButton -e -c ( "dupDisp " + $frame ) $btnDupDisp; 
+	symbolButton -e -c ( "changeAOV " + $frame + " dspyType " + "\"null\";optionMenuGrp -e -v null " + $mtorAOVControls[1] ) $btnDisableDisp; 
+	symbolButton -e -c ( "changeAOV " + $frame + " dspyType " + "\"tiff\";optionMenuGrp -e -v tiff " + $mtorAOVControls[1] ) $btnEnableDisp; 
+  
+  
+  // setup local presets menu
+	string $menuName = `popupMenu -p $btnAOVpresetList -b 1`; 
+	mtorRefreshAOVpresetsMenu( $menuName, $frame );
+	
+	symbolButton -e -c ( "AOVpresetSave " + $frame + " " + $dspyNameField + ";mtorRefreshAOVpresetsMenu " + $menuName + " " + $frame ) $btnAOVpresetSave;
+  
+}
+//===========================================================================================
+// 
+//===========================================================================================
+global proc mtorRefreshAOVpresetsMenu( string $menuName, string $list ) {
+  string $projDir = `workspace -q -rootDirectory`;	
+  string $l, $localPresetList[] = `getFileList -fld $projDir -fs "*.aov"`;  
+  if ( size($localPresetList) ) {
+    if (`menu -q -numberOfItems $menuName`)
+      menu -e -dai $menuName;
+    for ( $l in  $localPresetList ) { 
+  	  string $preset = substring( $l, 1, size( $l ) - 4 ); 
+  	  menuItem -p $menuName -label $preset -c ( "AOVpresetLoad " + $list + " \"" + $preset + "\"" );
+  	}
+  	menuItem -p $menuName -d true;	
+	  menuItem -p $menuName -label "Refresh" -c ("evalDeferred \"mtorRefreshAOVpresetsMenu " + $menuName + " " + $list + "\";" );
+  }  
+}
+//===========================================================================================
+// 
+//===========================================================================================
+global proc mtorRefreshLocalPresetsMenu( string $menuName ) {
+  string $projDir = `workspace -q -rootDirectory`;	
+  string $l, $localPresetList[] = `getFileList -fld $projDir -fs "*.rg"`;  
+  
+  if ( size($localPresetList) ) {
+    if (`menu -q -numberOfItems $menuName`)
+      menu -e -dai $menuName;
+    for ( $l in  $localPresetList ) { 
+  	  string $preset = substring( $l, 1, size( $l ) - 3 ); 
+  	  menuItem -p $menuName -label $preset -c ( "mtorLoadLocalPreset " +  $preset );
+  	}
+  	menuItem -p $menuName -d true;	
+	  menuItem -p $menuName -label "Refresh" -c ("evalDeferred \"mtorRefreshLocalPresetsMenu " + $menuName + "\";" );
+  }  
+}
+//===========================================================================================
+// 
+//===========================================================================================
+global proc AOVpresetSave( string $list, string $dspyNameField ) {
+  string $selected[] = `textScrollList -q -si $list`;
+	if ( size( $selected ) ) {
+    string $text = `textFieldGrp -q -text $dspyNameField`;
+    string $result = `promptDialog
+    	-title "Save AOV preset"
+    	-text $text
+    	-message "Enter Name:"
+    	-button "OK" -button "Cancel"
+    	-defaultButton "OK" -cancelButton "Cancel"
+    	-dismissString "Cancel"`;
+  
+    if ($result == "OK") {
+    	$text = `promptDialog -query -text`;
+    	if ( $text != "" ) {
+    	  string $projDir = `workspace -q -rootDirectory`;
+    	  string $presetName = ( $projDir + $text + ".aov" );
+        
+    	  string $lines[], $aov_values[];
+    	  int $i, $selected_id = getDispID( $selected[0] );
+  	    AOV_array( $selected_id, $aov_values, true ); // get values to array 
+  	    
+  	    string $name, $aov_names[] = { 
+        "dspyName", "dspyType", "dspyMode", "dspyPixelFilter", "dspyFilterWidthX", "dspyFilterWidthY", 
+        "dspyQuantize", "dspyZero", "dspyOne", "dspyMin", "dspyMax", "dspyDither" 
+        };
+        
+        for ( $name in $aov_names ) {
+          $lines[$i] = ( $name + " = " + $aov_values[$i] );
+          $i++;
+        }
+      	mtorWritePresetFile( $presetName, $lines );           
+    	}
+    }
+  }
+}
+
+//===========================================================================================
+// 
+//===========================================================================================
+global proc AOVpresetLoad( string $list, string $preset ) {
+  string $projDir = `workspace -q -rootDirectory`;
+  string $presetName = ( $projDir + $preset + ".aov" );
+  int $i, $id;
+  string $selected[] = `textScrollList -q -si $list`;
+  
+  if ( size( $selected ) ) {
+  	$id = getDispID( $selected[0] );  // just update selected AOV
+  } else {  
+    $id = addDisp( $list );  // setup new secondary display  
+  }
+  string $lines[];
+  if ( mtorReadPresetFile( $presetName, $lines ) ) { 
+    string $aov_values[];
+    for ( $i = 0 ; $i < size( $lines ) ; $i++ ) {
+      string $tokens[];
+      if ( tokenize( $lines[$i],"=", $tokens ) )
+        $aov_values[$i] = strip( $tokens[1] ); 
+    }
+    AOV_array( $id, $aov_values, false ); // set values from array 
+  	string $dspyName = "dspyName_" + $id;
+	  string $dspyType = "dspyType_" + $id;
+  	string $dspyTypeValue = `slimcmd rmanctl GetValue $dspyType`;
+  	string $dspyNameValue = `slimcmd rmanctl GetValue $dspyName`;
+  	string $label = "[" + $id + "] " + $dspyTypeValue + " " + $dspyNameValue;
+  	  int $idx[] = `textScrollList -q -sii $list`; // assume that we already have selected item after addDisp( $list )
+  	  textScrollList -e -rii $idx[0] $list;
+  		textScrollList -e -ap $idx[0] $label -selectItem $label $list;
+  	updateAOV( $list );
+  }  
+}
+//===========================================================================================
+// Get Display ID from textScrollList item value
+//===========================================================================================
+global proc int getDispID( string $item ) {
+	string $id = match( "\[[0-9]+\]*", $item );	 // item supposed to be "[%d]secondary_disp_name"
+	int $d = match( "[^\[][0-9]*", $id );
+	return $d;
+}
+//===========================================================================================
+//	Add secondary display
+//===========================================================================================
+global proc int addDisp( string $list ) {
+	string $i, $items[] = `textScrollList -q -allItems $list`;
+	int $id = 0;
+	for ( $i in $items )  	
+		$id = max( $id, getDispID($i) ); // find maximum used display ID
+	$id++;
+	string $dspyName = "dspyName_" + $id;
+	string $dspyType = "dspyType_" + $id;
+	slimcmd rmanctl InitDspy $id;
+	string $dspyTypeValue = `slimcmd rmanctl GetValue $dspyType`;
+	string $dspyNameValue = `slimcmd rmanctl GetValue $dspyName`;
+	string $label = "[" + $id + "] " + $dspyTypeValue + " " + $dspyNameValue;
+	textScrollList -e -append $label -selectItem $label $list;	
+	updateAOV( $list );
+	return $id;
+}
+//===========================================================================================
+//	Remove secondary display
+//===========================================================================================
+global proc remDisp( string $list ) {
+	string $selected[] = `textScrollList -q -si $list`;
+	int $idx[] = `textScrollList -q -sii $list`;
+	if ( size( $selected ) ) {	
+		int $id = getDispID( $selected[0] );
+		slimcmd rmanctl DeleteDspy $id;
+		textScrollList -e -rii $idx[0] $list;
+		$idx[0] = max( 1, $idx[0]-1 );
+		if ( `textScrollList -q -ni $list` )
+			textScrollList -e -sii $idx[0] $list;	
+		updateAOV( $list );
+	}
+}
+//===========================================================================================
+//	Duplicate secondary display
+//===========================================================================================
+global proc dupDisp( string $list ) {
+	string $selected[] = `textScrollList -q -si $list`;
+	if ( size( $selected ) ) {
+	  string $i, $items[] = `textScrollList -q -allItems $list`;	
+	  int $selected_id = getDispID( $selected[0] );
+	  int $j = 0, $id = 0;
+	  for ( $i in $items )  	
+  		$id = max( $id, getDispID($i) ); // find maximum used display ID
+  	$id++;
+  	
+  	string $aov_values[];
+  	AOV_array( $selected_id, $aov_values, true ); // get values to array 
+  	if ( size( $aov_values ) ) {
+  	  slimcmd rmanctl InitDspy $id;
+  	  AOV_array( $id, $aov_values, false ); // set values from array 
+  	  string $dspyName = "dspyName_" + $id;
+  	  string $dspyType = "dspyType_" + $id;
+  	  string $dspyNameValue = $aov_values[0];  
+  	  string $dspyTypeValue = $aov_values[1];
+  	   
+  	  string $label = "[" + $id + "] " + $dspyTypeValue + " " + $dspyNameValue;
+  	  textScrollList -e -append $label -selectItem $label $list;	
+  	  updateAOV( $list );
+  	}
+  }
+}
+//===========================================================================================
+//	
+//===========================================================================================
+global proc AOV_array( int $id, string $aov_values[], int $get ) {
+  int $i = 0;
+  string $name, $aov_name, $aov_names[] = { 
+    "dspyName", "dspyType", "dspyMode", 
+    "dspyPixelFilter", "dspyFilterWidthX", "dspyFilterWidthY", 
+    "dspyQuantize", "dspyZero", "dspyOne", "dspyMin", "dspyMax", "dspyDither" 
+  };
+  for ( $name in $aov_names ) {
+    $aov_name = $name + "_" + $id;
+    if ( $get ) {
+      $aov_values[$i] = `slimcmd rmanctl GetValue $aov_name`; 
+      //print ( "get: " + $aov_name + " = " + $aov_values[$i] + "\n" ); 
+    } else {
+      //print ( "set: " + $aov_name + " = " + $aov_values[$i] + "\n" );
+      slimcmd rmanctl SetValue ("\"" + $aov_name + "\"")  ("\"" + $aov_values[$i] + "\"" );  
+    }
+    $i++;
+  }
+}
+//===========================================================================================
+//
+//===========================================================================================
+global proc changeAOV( string $list, string $name, string $value ) {
+	string $selected[] = `textScrollList -q -si $list`;
+	int $idx[] = `textScrollList -q -sii $list`;
+	if ( size($selected) ) {	
+		string $val = $value;
+		int $d = getDispID( $selected[0] );
+		if ( $value == "<none>")
+			$value = "";
+		else if ( $value == "true")
+			$value = "1";	
+		else if ( $value == "false")
+			$value = "0";	
+		$value = "\"" + $value + "\"";
+		slimcmd rmanctl SetValue ($name + "_" + $d) $value;
+		if ( $name == "dspyName" || $name == "dspyType" ) {
+			string $dspyName = "dspyName_" + $d;
+			string $dspyType = "dspyType_" + $d;
+			string $dspyTypeValue = `slimcmd rmanctl GetValue $dspyType`;
+			string $dspyNameValue = `slimcmd rmanctl GetValue $dspyName`;
+			string $label = "[" + $d + "] " + $dspyTypeValue + " " + $dspyNameValue;
+			textScrollList -e -rii $idx[0] $list;
+			textScrollList -e -ap $idx[0] $label -selectItem $label $list;
+		}
+	}
+}
+//===========================================================================================
+//
+//===========================================================================================
+global proc updateAOV( string $list ) {
+global string $mtorAOVControls[];
+	float $v1, $v2, $v3, $v4;
+	string $selected[] = `textScrollList -q -si $list`;
+	if ( size($selected) ) {
+		int $d = getDispID( $selected[0] ),$i = 0, $iv;
+		string $name, $value;		
+	
+		textFieldGrp -e -text (`slimcmd rmanctl GetValue ("dspyName_" + $d)`) $mtorAOVControls[$i++];
+		$value = `slimcmd rmanctl GetValue ("dspyType_" + $d)`;
+		optionMenuGrp -e -v (($value == "" )? "<none>" : $value) $mtorAOVControls[$i++];
+		textFieldGrp -e -text (`slimcmd rmanctl GetValue ("dspyMode_" + $d)`) $mtorAOVControls[$i++];
+		$value = `slimcmd rmanctl GetValue ("dspyPixelFilter_" + $d)`;
+		optionMenuGrp -e -v (($value == "" )? "<none>" : $value) $mtorAOVControls[$i++];
+		$v1 = `slimcmd rmanctl GetValue ("dspyFilterWidthX_" + $d)`;
+		$v2 = `slimcmd rmanctl GetValue ("dspyFilterWidthY_" + $d)`;
+		floatFieldGrp -e 	-v1 $v1 -v2 $v2 $mtorAOVControls[$i++];
+		$value = `slimcmd rmanctl GetValue ("dspyQuantize_" + $d)`;
+		$iv = ( $value == "true" || $value == "1" )? 1 : 0 ;
+		checkBoxGrp -e -v1 $iv $mtorAOVControls[$i++];
+		$v1 = `slimcmd rmanctl GetValue ("dspyZero_" + $d)`;
+		$v2 = `slimcmd rmanctl GetValue ("dspyOne_" + $d)`;
+		$v3 = `slimcmd rmanctl GetValue ("dspyMin_" + $d)`;
+		$v4 = `slimcmd rmanctl GetValue ("dspyMax_" + $d)`;
+		floatFieldGrp -e -v1 $v1 -v2 $v2 -v3 $v3 -v4 $v4 $mtorAOVControls[$i++];
+		$v1 = `slimcmd rmanctl GetValue ("dspyDither_" + $d)`;
+		floatFieldGrp -e -v1 $v1 $mtorAOVControls[$i++];
+	}	else { // though not very elegant...
+		int $i = 0;
+		textFieldGrp -e -text "" $mtorAOVControls[$i++];
+		optionMenuGrp -e -v "<none>" $mtorAOVControls[$i++];
+		textFieldGrp -e -text "" $mtorAOVControls[$i++];
+		optionMenuGrp -e -v "<none>" $mtorAOVControls[$i++];
+		floatFieldGrp -e -v1 1 -v2 1 $mtorAOVControls[$i++];
+		checkBoxGrp -e -v1 0 $mtorAOVControls[$i++];
+		floatFieldGrp -e -v1 0 -v2 0 -v3 0 -v4 0 $mtorAOVControls[$i++];
+		floatFieldGrp -e -v1 0 $mtorAOVControls[$i++];
+	}
+}
+//===========================================================================================
+//
+//===========================================================================================
+global proc mtorRenderSetResolution( string $resolutionFld, string $maintainRatioFld , string $deviceAspectFld ) {
+global string $mtorSet;
+global int $oldRes[2];
+	int $wi = `intFieldGrp -q -v1 $resolutionFld`; 
+	int $hi = `intFieldGrp -q -v2 $resolutionFld`;
+	float $deviceAspect = `floatFieldGrp -q -v1  $deviceAspectFld`;
+	float $oldDeviceAspect = $deviceAspect;
+		
+	if ( `checkBoxGrp -q -v1 $maintainRatioFld` ) {
+		if ( $wi != $oldRes[0] ) {
+			$hi = (float) $wi / (float) $oldDeviceAspect + .5;	
+			intFieldGrp -e -v2  $hi $resolutionFld;	
+			$oldRes[1] = $hi;
+		} 
+		if ( $hi != $oldRes[1] ) {
+			$wi = (float) $hi * (float) $oldDeviceAspect  + .5;	
+			intFieldGrp -e -v1  $wi $resolutionFld;	
+		} 	$oldRes[0] = $wi;
+		
+	} else 
+		$deviceAspect = ( (float) $wi )/( (float) $hi );
+	eval( $mtorSet + "dspyRez -value \"" + $wi + " " + $hi + "\"" );
+	floatFieldGrp -e -v1 $deviceAspect $deviceAspectFld;
+	$oldRes[0] = $wi;
+	$oldRes[1] = $hi;
+}
+//===========================================================================================
+//
+//===========================================================================================
+global proc mtorRenderGetResolution( string $resolutionFld, string $aspectRatioFld , string $deviceAspectFld, string $menu ) {
+global string $mtorSet;
+global string $mtorResList[];	
+global int $oldRes[2];	
+	int $idx = `optionMenuGrp -q -sl $menu` - 1;
+	float $wi = $mtorResList[$idx * 5 + 1]; 
+	float $hi = $mtorResList[$idx * 5 + 2];
+	float $ratio = $mtorResList[$idx * 5 + 3];
+	float $device = $mtorResList[$idx * 5 + 4];  
+	if ( $idx == 0 )	// "Custom"
+		return;
+	if ( $idx == 1 ) { // get from Maya globals
+		string	$globals[] = `ls -renderGlobals`;
+  	if( size($globals[0]) > 0 ) {
+			string	$connect[] = `listConnections ($globals[0] + ".resolution")`;
+			if( size($connect[0]) > 0 )	{
+				$wi = `getAttr ($connect[0] + ".width" )`;
+				$hi = `getAttr ($connect[0] + ".height" )`;  
+				$ratio = `getAttr ($connect[0] + ".pixelAspect" )`;
+				$device = `getAttr ($connect[0] + ".deviceAspectRatio" )`;
+				$ratio =  $device / ( $wi / $hi )  ;
+				$ratio = (float)floor($ratio * 1000 + 0.5) / 1000.0;
+				optionMenuGrp -e -sl 1 $menu; // restore menu item to "Custom"
+			}
+		}
+	}
+	eval( $mtorSet + "dspyRez -value \"" + $wi + " " + $hi + "\"" );
+	eval( $mtorSet + "pixelRatio -value " + $ratio );
+	floatFieldGrp -e -v1 $ratio $aspectRatioFld;
+	floatFieldGrp -e -v1 $device $deviceAspectFld;
+	intFieldGrp -e -v1 $wi -v2 $hi $resolutionFld;
+	$oldRes[0] = $wi;
+	$oldRes[1] = $hi;
+}
+//===========================================================================================
+//
+//===========================================================================================
+global proc setJobCleanup ( string $ribFld, string $mapFld, string $texFld, string $jmapFld, string $jtexFld ) {
+global string $mtorSet;  
+	string $ret = "";				
+	if ( `checkBoxGrp -q -v1 $ribFld`) $ret += "rib ";
+	if ( `checkBoxGrp -q -v1 $mapFld`) $ret += "map ";
+	if ( `checkBoxGrp -q -v1 $texFld`) $ret += "tex ";
+	if ( `checkBoxGrp -q -v1 $jmapFld`) $ret += "jmap ";
+	if ( `checkBoxGrp -q -v1 $jtexFld`) $ret += "jtex";
+	eval( $mtorSet + "jobCleanup -value " + "\"" + $ret + "\"" );
+}
+//===========================================================================================
+//
+//===========================================================================================
+global proc mtorRenderGenerateRib( ) {
+global string $mtorGet;
+	int $i, $currentTime = `currentTime -q`;
+	int $doAnimation = `eval($mtorGet) "doAnim"`;
+	int $computeStart = `eval($mtorGet) "computeStart"`;
+	int $computeStop = `eval($mtorGet) "computeStop"`;
+	int $computeBy = `eval($mtorGet) "computeBy"`;
+	mtor control genrib -frame "preflight";
+	if ( $doAnimation ) {
+		for ( $i = $computeStart ; $i <= $computeStop ; $i+= $computeBy )
+			mtor control genrib -frame $i; 
+	} else
+		mtor control genrib -frame $currentTime;
+}
+//===========================================================================================
+//
+//===========================================================================================
+global proc mtorGenWorklist() {
+global string $mtorGet;
+global string $mtorSet;
+	string $displayName = `eval($mtorGet) "dspyName"`;
+	string $vers_mayaAPI = `mtor getversion mayaAPI`;
+	string $fullname = `file -q -a`;
+	string $sceneName = mtorRenderGetMayaSceneName();
+	string $tmpsDir = `slimcmd workspace GetDir torTmps`; 
+	string $projDir = `mtor project get`;
+	string $alfScript = $projDir + $tmpsDir + "/" + $sceneName + ".alf";
+	string $mtor_maya = "mtor_maya"; // 5.exe
+	if ( $vers_mayaAPI == "500" )
+		$mtor_maya += "5";
+	else
+		$mtor_maya += "4.5";
+	$mtor_maya += ".exe";
+	
+	int $doAnimation = `eval($mtorGet) "doAnim"`;
+	int $start = `currentTime -q`, $num = 1, $by = 1;
+	if ( $doAnimation ) {
+		$by = `eval($mtorGet) "computeBy"`;
+		$start = `eval($mtorGet) "computeStart"`;
+		int $computeStop = `eval($mtorGet) "computeStop"`;
+		$num = $computeStop - $start + 1;	
+	} 
+	string $cmdline =  " -mode alfred -cmd genWorklist " + $start + " nohost " + $num + "(" + $by + ")" + " -scene " + $fullname + " -wsroot " + $projDir;
+	print ("$cmdline = " + $cmdline + "\n");
+	string $jobTitle = "Job -title {" + $displayName + "(mtor_maya5 job)} -comment {#Created by mtorRender.mel} -envkey {} -dirmaps {} -service {} -tags {} -atleast 1 -atmost 1 -init { \n";
+	print ("$jobTitle = " + $jobTitle + "\n");
+	int $fileId = `fopen $alfScript "w"`;
+  fprint $fileId ("##AlfredToDo 3.0\n");
+	fprint $fileId $jobTitle;
+	fprint $fileId ("Assign txCmd {txmake}\n");
+	fprint $fileId ("Assign txSvc {}\n");
+	fprint $fileId ("Assign txTag {}\n");
+	fprint $fileId ("} -subtasks {\n");
+  
+	string $outLog = `system ( $mtor_maya + $cmdline  )`; //  "shell " + 
+	string $s, $lines[];
+	tokenize( $outLog, "\n", $lines);
+	for ($s in $lines) {
+		if ( substring( $s,1,5 ) == "*****" )  // skip mtor_maya error messages
+			continue;
+		fprint $fileId ($s + "\n");	
+	}
+	fprint $fileId ("}\n");
+	fclose $fileId;
+	print ("Generated alfred script " + $alfScript + "\n");
+}   
+//===========================================================================================
+//
+//===========================================================================================
+global proc QuickLaunchBarToggle( int $i, string $name ) {
+global string $mtorQuickLaunchBarItems[];	
+global string $mtorQuickLaunchBarControls[];
+global int $mtorRenderAdvancedUI;
+global string $mtorGet;
+global string $mtorSet;
+	int $value;
+	string $svalue;
+	$value = `eval($mtorGet) $name`;
+	$value = !$value; // toogle 
+	eval($mtorSet + " " + $name  + " -value " + $value);
+	if ( $mtorRenderAdvancedUI ) {
+		checkBoxGrp -e -v1 $value $mtorQuickLaunchBarControls[$i];	
+	}
+	QuickLaunchBarUpdate;
+}
+//===========================================================================================
+//
+//===========================================================================================
+global proc QuickLaunchBarToggleMenu( int $i, string $name, string $item ) {
+global string $mtorQuickLaunchBarItems[];	
+global string $mtorQuickLaunchBarControls[];
+global int $mtorRenderAdvancedUI;
+global string $mtorSet;
+	eval($mtorSet + " " + $name  + " -value " + "\"" + $item + "\"" );
+	if ( $mtorRenderAdvancedUI )
+		optionMenuGrp -e -v $item $mtorQuickLaunchBarControls[$i];
+	QuickLaunchBarUpdate;
+}
+//===========================================================================================
+//
+//===========================================================================================
+global proc string QuickLaunchBar() {
+global string $mtorGet; 
+global string $mtorSet; 
+global string $mtorQuickLaunchBarItems[];	
+global string $mtorQuickLaunchBarControls[];
+global int $mtorRenderAdvancedUI;
+global string $mtorRenderWin;
+	int $cw1 = 70, $cw2 = 42, $cw3 = 34;
+	string $menuName, $fieldName, $rg_value, $s;
+	string $status = `columnLayout -cat left 0 -rs 0 -adj true`;
+		rowLayout -cw 1 70 -cw 2 16 -cw 3 16 -cw 4 16 -cw 5 16 -cw 6 16 -cw 7 30 -cw 8 70 -cw 9 70 -cw 10 70 -cw 11 20 -numberOfColumns 11; // 
+			$mtorQuickLaunchBarItems[0] = `iconTextButton -w 70 -h 20 -style "textOnly" -l "file" -bgc 1 0.8 0 -ann "Display"`;
+			$menuName = `popupMenu -p $mtorQuickLaunchBarItems[0] -b 1`;
+			for ( $s in {"it","combiner","framebuffer","tiff","cineon","alias","mayaiff","targa","sgif","picio","softimage","null"} )
+				menuItem -label $s -c ("QuickLaunchBarToggleMenu 0 dspyServer \"" + $s + "\"");
+			$mtorQuickLaunchBarItems[1] = `iconTextButton -w 16 -h 20 -style "textOnly" -l "S" -c "QuickLaunchBarToggle 1 dspyPrimaryOnly;" -bgc 0 0.8 0.2 -ann "Secondary Displays"`;
+			$mtorQuickLaunchBarItems[2] = `iconTextButton -w 16 -h 20 -style "textOnly" -l "A" -c "QuickLaunchBarToggle 2 doAnim;" -bgc 0 0.8 0.2 -ann "Do Animation"`;
+			$mtorQuickLaunchBarItems[3] = `iconTextButton -w 16 -h 20 -style "textOnly" -l "B" -c "QuickLaunchBarToggle 3 backPlane;" -bgc 0 0.8 0.2  -ann "Backplane"`;
+			$mtorQuickLaunchBarItems[4] = `iconTextButton -w 16 -h 20 -style "textOnly" -l "M" -c "QuickLaunchBarToggle 4 doMotionBlur;" -bgc 0 0.8 0.2  -ann "MotionBlur"`;
+			$mtorQuickLaunchBarItems[5] = `iconTextButton -w 16 -h 20 -style "textOnly" -l "R" -c "QuickLaunchBarToggle 5 rayTrace;" -bgc 0 0.8 0.2 -ann "Raytrace"`;
+			$mtorQuickLaunchBarItems[6] = `iconTextButton -w 30 -h 20 -style "textOnly" -l "maps" -bgc 1 0.8 0  -ann "Lazy compute"`;
+			$menuName = `popupMenu -p $mtorQuickLaunchBarItems[6] -b 1`; 
+			for ( $s in {"off", "maps", "all"} )
+				menuItem -label $s -c ( "QuickLaunchBarToggleMenu 6 lazyCompute \"" + $s + "\"");
+		  $mtorQuickLaunchBarItems[7] = `iconTextButton -w 70 -h 20 -style "textOnly" -l "immediate" -bgc 1 0.7 0  -ann "RIB Generation"`;
+			$menuName = `popupMenu -p $mtorQuickLaunchBarItems[7] -b 1`; 
+			for ( $s in { "immediate","deferred","distributed","distrender" } )
+				menuItem -label $s -c ( "QuickLaunchBarToggleMenu 7 RIBGen \"" + $s + "\"");
+			$mtorQuickLaunchBarItems[8] = `iconTextButton -w 70 -h 20 -style "textOnly" -l "local" -bgc 1 0.8 0 -ann "Compute location"`;
+			$menuName = `popupMenu -p $mtorQuickLaunchBarItems[8] -b 1`; 
+			for ( $s in {"local", "remote", "remote-samehost"} )
+			  menuItem -label $s -c ( "QuickLaunchBarToggleMenu 8 computeLocation \"" + $s + "\"");
+			$mtorQuickLaunchBarItems[9] = `iconTextButton -w 70 -h 20 -style "textOnly" -l "netrender" -bgc 1 0.7 0 -ann "Renderer"`;
+			$menuName = `popupMenu -p $mtorQuickLaunchBarItems[9] -b 1`; 
+			for ( $s in {"none", "render","netrender","custom"} )
+			  menuItem -label $s -c ( "QuickLaunchBarToggleMenu 9 renderer \"" + $s + "\"");
+			symbolButton -i "popupMenuIcon.xpm" -ann "Advanced options on|off" -c "$mtorRenderAdvancedUI = !$mtorRenderAdvancedUI; optionVar -sv \"mtorRenderAdvancedUI\" $mtorRenderAdvancedUI; mtorRenderUI;";
+		setParent ..;	
+		
+		//string $form = `formLayout -numberOfDivisions 100`;
+		columnLayout -cat left 0 -rs 0 -adj true;
+  	  rowLayout -adj 1 -cw 2 110  -numberOfColumns 2;
+    		$rg_value = `eval($mtorGet) "dspyName"`;
+        string $dispField = `textFieldGrp -cw 1 $cw1 -cw 2 100 -adj 2 -label "Display" -text $rg_value`; 
+    	  textFieldGrp -e -cc ( $mtorSet + "dspyName" + " -value " + "\"#1\"" ) $dispField;
+    		$menuName = `popupMenu -p $dispField`;
+    			menuItem -label "(Maya scene name)" -command ("textFieldGrp -e -text \`mtorRenderGetMayaSceneName\` " + $dispField +";" + $mtorSet + "dspyName" + " -value \`mtorRenderGetMayaSceneName\`;" );
+    		
+    		int $rgProcMin = `eval($mtorGet) "alfNRMMin"`; 
+    		int $rgProcMax = `eval($mtorGet) "alfNRMMax"`;
+        string $cpuField = `intFieldGrp -cw 1 $cw2 -cw 2 $cw3 -cw 3 $cw3  -cat 1 "right" 2 -nf 2 -v1 $rgProcMin -v2 $rgProcMax -label "CPUs"`;
+        intFieldGrp -e -cc (  $mtorSet + "alfNRMMin" + " -value " + "\"#1\";" + 
+                              $mtorSet + "alfNRMMax" + " -value " + "\"#2\";" + 
+                              "if ( $mtorRenderAdvancedUI ) intFieldGrp -e -v1 #1 -v2 #2 $mtorQuickLaunchBarControls[11]" ) $cpuField;
+        
+      setParent ..;	
+      
+      rowLayout -adj 1 -cw 2 110  -numberOfColumns 2;  
+        $rg_value = `eval($mtorGet) "camName"`;
+        string $camField = `textFieldGrp -cw 1 $cw1 -cw 2 100 -adj 2 -label "Camera" -text $rg_value `; 
+    	  textFieldGrp -e -cc ( $mtorSet + "camName" + " -value " + "\"#1\"" ) $camField;
+    		$menuName = `popupMenu -p $camField`;
+    		mtorCreateCamerasMenu( $menuName, $camField );
+    		
+    		int $rgStart = `eval($mtorGet) "computeStart"`; 
+    		int $rgStop = `eval($mtorGet) "computeStop"`;
+    		string $aniField = `intFieldGrp -cw 1 $cw2  -cw 2 $cw3 -cw 3 $cw3  -cat 1 "right" 2 -nf 2 -v1 $rgStart -v2 $rgStop -label "Frames"`;
+  		  intFieldGrp -e -cc (  $mtorSet + "computeStart" + " -value " + "\"#1\";" + 
+                              $mtorSet + "computeStop" + " -value " + "\"#2\";" +
+                              "if ( $mtorRenderAdvancedUI ) intFieldGrp -e -v1 #1 -v2 #2  $mtorQuickLaunchBarControls[10]") $aniField;
+        $mtorQuickLaunchBarItems[10] = $aniField;
+        $mtorQuickLaunchBarItems[11] = $cpuField;
+  		setParent ..;	
+  		
+	  setParent ..;		
+	setParent ..;	
+	return $status;	
+}
+//===========================================================================================
+//
+//===========================================================================================
+global proc mtorCreateCamerasMenu( string $menuName, string $fieldName ) {
+global string $mtorSet;  
+  if (`menu -q -numberOfItems $menuName`)
+    menu -e -dai $menuName;
+  string $cam, $listCam[] =`ls -ca`; // get cameras list
+  for( $cam in $listCam ) 
+			menuItem -p $menuName -label $cam -command ("textFieldGrp -e -text " + $cam + " " + $fieldName +";" + $mtorSet + "camName" + " -value " + $cam );
+	menuItem -p $menuName -d true;	
+	menuItem -p $menuName -label "Refresh" -c ("evalDeferred \"mtorCreateCamerasMenu " + $menuName + " " + $fieldName + "\";" );
+}
+//===========================================================================================
+//
+//===========================================================================================
+global proc QuickLaunchBarUpdate() {
+global string $mtorQuickLaunchBarItems[];	
+global string $mtorGet;
+	int $ival, $i1, $i2;
+	iconTextButton -e -l (eval($mtorGet + "dspyServer")) $mtorQuickLaunchBarItems[0]; 
+	$ival = eval($mtorGet + "dspyPrimaryOnly");
+	if ( $ival ) iconTextButton -e -l "S" -bgc 1 0 0 $mtorQuickLaunchBarItems[1]; 
+	else iconTextButton -e -l "S" -bgc 0 0.8 0.2 $mtorQuickLaunchBarItems[1]; 
+	$ival = eval($mtorGet + "doAnim");
+	if ( $ival ) iconTextButton -e -l "A" -bgc 0 0.8 0.2 $mtorQuickLaunchBarItems[2]; 
+	else iconTextButton -e -l "A" -bgc 1 0 0 $mtorQuickLaunchBarItems[2]; 
+	$ival = eval($mtorGet + "backPlane");
+	if ( $ival ) iconTextButton -e -l "B" -bgc 0 0.8 0.2 $mtorQuickLaunchBarItems[3]; 
+	else iconTextButton -e -l "B" -bgc 1 0 0 $mtorQuickLaunchBarItems[3]; 
+	$ival = eval($mtorGet + "doMotionBlur");
+	if ( $ival ) iconTextButton -e -l "M" -bgc 0 0.8 0.2 $mtorQuickLaunchBarItems[4]; 
+	else iconTextButton -e -l "M" -bgc 1 0 0 $mtorQuickLaunchBarItems[4]; 
+	$ival = eval($mtorGet + "rayTrace");
+	if ( $ival ) iconTextButton -e -l "R" -bgc 0 0.8 0.2 $mtorQuickLaunchBarItems[5]; 
+	else iconTextButton -e -l "R" -bgc 1 0 0 $mtorQuickLaunchBarItems[5]; 
+	iconTextButton -e -l (eval($mtorGet + "lazyCompute")) $mtorQuickLaunchBarItems[6];
+	iconTextButton -e -l (eval($mtorGet + "RIBGen")) $mtorQuickLaunchBarItems[7];
+	iconTextButton -e -l (eval($mtorGet + "computeLocation")) $mtorQuickLaunchBarItems[8];
+	iconTextButton -e -l (eval($mtorGet + "renderer")) $mtorQuickLaunchBarItems[9];
+	
+	$i1 = eval($mtorGet + "computeStart");
+	$i2 = eval($mtorGet + "computeStop");
+	intFieldGrp -e -v1 $i1 -v2 $i2 $mtorQuickLaunchBarItems[10];
+	$i1 = eval($mtorGet + "alfNRMMin");
+	$i2 = eval($mtorGet + "alfNRMMax");
+	intFieldGrp -e -v1 $i1 -v2 $i2 $mtorQuickLaunchBarItems[11];
+	
+}	
+//===========================================================================================
+//
+//===========================================================================================
+global proc mtorRenderUI() {
+global string $mtorRenderWinForm;
+global string $mtorRenderWin;
+global int $mtorRenderAdvancedUI;
+	string $s, $wnd = $mtorRenderWin, $fieldName, $menuName;;
+	int $i, $cw1 = 120, $cw2 = 50;
+	if ( $mtorRenderWinForm != "" ) { 
+	  if ( `formLayout -q -ex $mtorRenderWinForm` ) {
+	    deleteUI $mtorRenderWinForm;
+	  }
+  }
+	setParent $mtorRenderWin;		
+	string $form = `formLayout -numberOfDivisions 100`;
+	$mtorRenderWinForm = $form;
+	string $status = QuickLaunchBar();
+	string $header;
+	if ( !$mtorRenderAdvancedUI ) { 
+		$header = `columnLayout -adj false dummy`;
+		setParent ..;
+		window  -edit -h 20 -w 380 -sizeable false $wnd;
+	} else {
+		window -edit -sizeable true $wnd;
+  	$header = `tabLayout -scr true -cr true `;
+  		string $displayColumn = `columnLayout -cat left 0 -rs 0 -adj true displayTab`;
+  			ShowDisplay();	
+  		setParent ..;
+  		string $aovColumn = `columnLayout -cat left 0 -rs 0 -adj true aovTab`;
+  			ShowAOV();
+  		setParent ..;	
+  		string $optionsColumn = `columnLayout -cat left 0 -rs 0 -adj true optionsTab`;
+  			ShowOptions();	
+  		setParent ..;	
+  		string $raysColumn = `columnLayout -cat left 0 -rs 0 -adj true raysTab`;
+  			ShowRaytrace();	
+  		setParent ..;
+  		string $spoolColumn = `columnLayout -cat left 0 -rs 0 -adj true spoolTab`;
+  			ShowSpool();	
+  		setParent ..;	
+  		string $accelColumn = `columnLayout -cat left 0 -rs 0 -adj true accelTab`;
+  			ShowAcceleration();	
+  		setParent ..; 
+	  setParent ..;	
+		tabLayout -e 	
+			-tabLabel $displayColumn "Display" 
+			-tabLabel $aovColumn "AOV"
+			-tabLabel $optionsColumn "Options" 
+			-tabLabel $raysColumn "Ray Trace"
+			-tabLabel $spoolColumn "Spool"
+			-tabLabel $accelColumn "Accel" 
+			$header;	
+		string $selectedTab;
+		if( `optionVar -ex "mtorRenderSelectedTab"` ) {
+			$selectedTab =`optionVar -q "mtorRenderSelectedTab"`;
+		} else {
+			$selectedTab = "displayTab";
+			optionVar -sv "mtorRenderSelectedTab" $selectedTab;
+		}
+		tabLayout -e -st $selectedTab -selectCommand ("mtorSelectTab " + $header ) $header;
+	}
+	string $renderBtn = `button -l "Render!" -c (" if ( eval(\"mtorValidateRender\") ) { mtor RenderSpool; }")`;
+	string $closeBtn = `button -label "Close" -c ( "deleteUI -window " + $wnd )` ; 
+	formLayout -edit
+	-attachForm $closeBtn "bottom" 2
+	-attachForm $renderBtn "bottom" 2
+	-attachForm $closeBtn "left" 2
+	-attachForm $renderBtn "right" 2
+	-attachControl $renderBtn "left" 2  $closeBtn
+	-attachPosition $closeBtn "right" 0 50
+	-attachPosition $renderBtn "left" 0 50
+	-attachForm $status "left" 2
+	-attachForm $status "right" 2
+	-attachForm $status "top" 2 
+	-attachControl $header "top" 2 $status
+	-attachForm $header "left" 2
+	-attachForm $header "right" 2
+	-attachControl $header "bottom" 2 $closeBtn
+	$form;
+	QuickLaunchBarUpdate();
+	window  -edit -rtf true $wnd;
+}
+//===========================================================================================
+//
+//===========================================================================================
+global proc mtorSelectTab( string $tabLayout ) {
+	string $selectedTab = `tabLayout -q -st  $tabLayout`;	
+	optionVar -sv "mtorRenderSelectedTab" $selectedTab;
+}
+
+//===========================================================================================
+// Check valid conditions for rendering
+// Ask user about rendering animation to framebuffer
+//===========================================================================================
+global proc int mtorValidateRender() {
+  global string $mtorGet;
+  int $ret = false;
+  string $display = eval($mtorGet + "dspyServer");
+  string $renderer = eval($mtorGet + "renderer");
+  int $doAnim = eval($mtorGet + "doAnim");
+  string $confirm = "Yes";
+        
+  if ( $doAnim ) {
+    if (  $display == "it" || $display == "framebuffer" || $display == "combiner"  ) {
+    	$confirm = `confirmDialog -title "Confirm" -message ("Do you really want to render animation to \"" + $display + "\"?" )
+      	-button "Yes" -button "No" -defaultButton "Yes" -cancelButton "No" 
+      	-dismissString "No"`;
+    }
+    
+    if (  $confirm == "Yes" && $renderer == "custom"  ) {
+    	$confirm = `confirmDialog -title "Confirm" -message ("Do you really want to render animation by \"custom\" renderer?" )
+      	-button "Yes" -button "No" -defaultButton "Yes" -cancelButton "No" 
+      	-dismissString "No"`;
+    }
+  }
+	if ( $confirm == "Yes" ) 
+	  $ret = true;
+  return $ret;      	  
+}
+
+//===========================================================================================
+// 
+//===========================================================================================
+global proc int mtorReadPresetFile( string $fileName, string $lines[] ) {
+  int $ret = false;
+  int $fileId = `fopen $fileName "r"`;
+  if ( $fileId != 0 ) {
+    int $i;
+    clear $lines;
+    string $line = `fgetline $fileId`;
+    while ( size( $line ) > 0 ) {
+      $lines[$i++] = strip ( $line );
+    	$line = `fgetline $fileId`;
+    }
+    fclose $fileId;
+	  print ( $fileName + " loaded\n");
+	  $ret = true;
+  } else {
+    error("Can't open " + $fileName );
+  }
+  return $ret;
+}
+//===========================================================================================
+// 
+//===========================================================================================
+global proc int mtorWritePresetFile( string $fileName, string $lines[] ) {
+  int $ret = false;
+  string $confirm = "Yes";
+      
+  if ( `file -q -ex $fileName` ) {
+  	$confirm = `confirmDialog -title "Confirm overwrite" -message "Preset name already exist.\n Do you want overwrite it?"
+    	-button "Yes" -button "No" -defaultButton "Yes" -cancelButton "No" 
+    	-dismissString "No"`;
+  }
+  if ( $confirm == "Yes" ) {
+    int $fileId = `fopen $fileName "w"`;
+    if ( $fileId != 0 ) {    
+      int $i;
+      for( $i = 0; $i <  size( $lines ) ; $i++ ) {
+        fprint $fileId ( $lines[$i] + "\n" );
+      }
+      fclose $fileId;
+  	  print ( $fileName + " saved\n");
+  	  $ret = true;
+    } else {
+      error("Can't write " + $fileName );
+    }
+  }
+  return $ret;
+}
+

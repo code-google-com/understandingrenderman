@@ -1,0 +1,31 @@
+#MayaMan 1.2.18
+##RenderMan RIB
+version 3.03
+ShadingRate 1
+PixelSamples 2 2
+PixelFilter "catmull-rom" 3 3
+Quantize "rgba" 255 0 255 0.5
+Exposure 1 1
+Declare "mpcache" "integer"
+Hider "hidden" 
+	"mpcache" [0]
+Declare "jitterperbucket" "float"
+Hider "hidden" 
+	"jitter" [1]
+GeometricApproximation "motionfactor" 2
+Option "limits" "eyesplits" [3]
+ErrorHandler "printonce"
+Sides 2
+ShadingInterpolation "smooth"
+Attribute "trace" "integer samplemotion" [0]
+Attribute "derivatives" "int extrapolate" [0]
+Format 320 240 0.99975
+Option "trace" "int maxdepth" [6]
+Option "trace" "float specularthreshold" [2]
+Attribute "trace" "float bias" [0.01]
+Attribute "trace" "int maxdiffusedepth" [1]
+	"int maxspeculardepth" [6]
+Attribute "irradiance" "float maxerror" [0.5]
+	"float maxpixeldist" [10]
+Attribute "photon" "int estimator" [75]
+Attribute "trace" "int displacements" [1]

@@ -1,0 +1,62 @@
+global proc export_jot(string $_filename)
+{
+	string $list[] = `ls -sl`;
+	
+	string $item;
+	
+	for($item in $list)
+	{
+		select -hi -r ($item);
+		
+		string $hi[] = `ls -sl`;
+		string $it;
+		
+		print ("EXPORTING:\n");
+		string $filename = $_filename;
+		int $FP = fopen($filename, "w");
+		
+		for($it in $hi)
+		{
+			string $type = `nodeType ($it)`;
+			if($type == "mesh")
+			{							
+				fprint $FP "#jot\n\nTEXBODY \t{\n";
+				fprint $FP ("\tname \t"+$item+"."+""+$it+"(celia) \n");
+				// code for WTM 
+				fprint $FP "\txform \t{{1 0 0 0 }{0 1 0 0 }{0 0 1 0 }{0 0 0 1 }}\n";
+				fprint $FP "\tmesh_data 	{ \n\t\tLMESH 	{ \n";
+				fprint $FP "\t\t\tvertices 	{ {";
+				
+				int $nv[] = `polyEvaluate -v $it`;
+				int $nf[] = `polyEvaluate -f $it`;
+				int $ii,$jj;
+				string $varr="";
+ 				for($ii=0;$ii<$nv[0];$ii++)
+				{
+					float $vt[] = `xform -q -ws -t ($it+".vtx["+$ii+"]")`;
+					$varr+="{"+$vt[0]+ " "+$vt[1]+ " "+$vt[2]+ "}";
+				}
+				fprint $FP ($varr);
+				fprint $FP "}} \n";				
+
+				fprint $FP "\t\t\tfaces \t{ {";
+				string $farr="";
+				for($ii=0;$ii<$nf[0];$ii++)
+				{
+					string $face[] = `polyInfo -fv ($it+".f["+$ii+"]")`;
+					string $buf[]; 
+					int $nn=tokenize($face[0], " ", $buf);
+					$farr+="{";
+					for($jj=2; $jj<$nn-1; $jj++) $farr+= $buf[$jj]+" ";
+					$farr+="}";
+				}
+				fprint $FP ($farr);	
+				fprint $FP "}} \n";
+								
+				fprint $FP "\t\t\t} } \n\t} \nCREATE \t{ ";
+				fprint $FP ($item+"."+$it+"(celia)\n\t} ");				
+			}
+		}
+		fclose($FP);	
+	}
+}

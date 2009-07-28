@@ -1,0 +1,22 @@
+Display "RenderMan" "framebuffer" "rgb"
+Format 256 192 1
+ShadingRate 1
+Translate 0 0 2.7650300856
+WorldBegin
+  TransformBegin
+    LightSource "ambientlight" 500 "lightcolor" [0.051 0.051 0.051]
+    LightSource "distantlight" 501 "from" [1 1.5 -1] "to" [0 0 0]
+    LightSource "distantlight" 502 "lightcolor" [0.2 0.2 0.2] 
+                "from" [-1.3 -1.2 -1.0] "to" [0 0 0]
+
+  TransformEnd
+
+      TransformBegin
+        Rotate 90 1 0 0
+        Rotate 90 0 0 1
+  Surface "textured_noise"
+        Sphere 1 -1 1 360
+      TransformEnd
+
+
+WorldEnd

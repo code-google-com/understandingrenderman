@@ -1,0 +1,1214 @@
+float check_slice_plane(point p)
+{
+  float r = 1;
+  if(ycomp(transform("slice_plane", p)) < 0)
+    r = 0;
+  return r;
+}
+
+float filteredpulsetrain (float edge, x, dx)
+{
+    float x0 = x - dx/2;
+    float x1 = x0 + dx;
+    float iedge = 1 - edge;
+
+     
+    float integral (float t, edge, iedge) { 
+	float ft = floor(t);
+        return (iedge*ft + max(0,t-ft-edge));
+    }
+
+     
+    return (integral(x1, edge, iedge) - integral(x0, edge, iedge)) / dx;
+}
+ 
+void
+voronoi_f1f2_3d (point P;
+		 float jitter;
+		 output float f1;  output point pos1;
+		 output float f2;  output point pos2;
+    )
+{
+    point thiscell = point (floor(xcomp(P))+0.5, floor(ycomp(P))+0.5,
+			    floor(zcomp(P))+0.5);
+    f1 = f2 = 1000;
+    pos1 = 0;
+    uniform float i, j, k;
+    for (i = -1;  i <= 1;  i += 1) {
+        for (j = -1;  j <= 1;  j += 1) {
+            for (k = -1;  k <= 1;  k += 1) {
+		point testcell = thiscell + vector(i,j,k);
+                point pos = testcell + 
+		            jitter * (vector cellnoise (testcell) - 0.5);
+		vector offset = pos - P;
+                float dist = offset . offset;  
+
+                if (dist < f1) {
+                    f2 = f1;  pos2 = pos1;
+                    f1 = dist;  pos1 = pos;
+                } else if (dist < f2) {
+                    f2 = dist;  pos2 = pos;
+		}
+
+            }
+	}
+    }
+    f1 = sqrt(f1);  f2 = sqrt(f2);
+}
+
+color colorexp (color C)
+{
+    return color (exp(comp(C,0)), exp(comp(C,1)), exp(comp(C,2)));
+}
+
+void setup_rfl_rfr(output vector Rfldir, Rfrdir;
+		   output float kr, kt;
+		   vector IN;
+		   normal Nf;
+		   float eta
+)
+{
+  extern vector I; extern normal N;
+  float e = (I.N < 0) ? 1/eta : eta;
+  fresnel(IN, Nf, e, kr, kt, Rfldir, Rfrdir);
+  if(Rfrdir == vector(0,0,0)) {
+    Rfrdir = Rfldir;
+    kt = 1;
+    kr = 0;
+  }
+}
+
+
+color phonge(normal Nf; vector V; float roughness, highlightSize; color basecol, speccol, whiteness)
+{
+  extern point P; extern color Cl; extern vector L, I ;
+
+  color C = 0;
+  color ctint = speccol * (basecol + whiteness * (1-basecol));
+  vector R =  normalize(reflect(-V, Nf));
+  illuminance( "-ambient" ,  P ,  Nf ,  PI * 0.5 )  {
+    float nonspecular = 0;	lightsource("__nonspecular", nonspecular) ;
+    if(nonspecular < 0.5) {
+      vector Ln = normalize(L );
+      float ang = clamp(R.Ln,0,1);
+      if(ang > 0) {
+	ang = acos(ang) / highlightSize;
+	if(ang < PI * 0.5) {
+	  C += Cl * pow(cos(ang), 1/roughness) * ctint;
+	}
+      }
+    }
+  }
+  return C;
+}
+
+
+vector GetTangent(normal Nf)
+{
+  uniform vector UB = normalize(vtransform("object", "current", vector(0.01, 1.0, 0.0)));
+  vector U = UB;
+  float UN = U.Nf;
+  if(abs(UN) > 0.9995) {
+    uniform vector UA = normalize(vtransform("object", "current", vector(0.01, 0.0, 1.0)));
+    U = UA;
+    UN = U.Nf;
+  }
+  return normalize(U - Nf * UN);
+}
+
+float GaussHighlight(float gloss, spreadX, spreadY;
+		     normal Nf;
+		     vector V, Ln, T;
+		     float NL)
+{
+  uniform float ALPHA_MIN      = 0.015;
+  uniform float ALPHA_MAX      = 0.5;
+  uniform float SPEC_MAX       = 0.5;
+  uniform float ALPHA_SZ       = (ALPHA_MAX - ALPHA_MIN);
+  uniform float DEFAULT_GLOSS2 = 0.03;
+
+  float out = 0.0;
+
+  vector H = normalize(Ln - V);
+  float NH = Nf . H;
+  if (NH > 0.0) {
+    float NV = max(-(Nf.V),0.001);
+
+    float g = min(1.0 / sqrt( NL * NV ), 3);
+
+     
+    vector B = ( T ^ Nf );
+
+    float asz = (1.0 - gloss) * ALPHA_SZ;
+    float ax = ALPHA_MIN + asz * (10/spreadX);
+    float ay = ALPHA_MIN + asz * (10/spreadY);
+
+    float x = ( H . T ) / ax;
+    float y = ( H . B ) / ay;
+    float e = exp( -2.0 * (x*x + y*y) / (1.0+NH) );
+
+    uniform float norm = SPEC_MAX / (4.0 * PI * DEFAULT_GLOSS2 );
+    out = norm * g * e;
+  }
+  return out;
+}
+
+color anisotropic(normal Nf; vector V; float roughness, angle, spreadX, spreadY, fresnelIndex; color speccol)
+{
+  extern point P; extern color Cl; extern vector L, I ;
+
+  vector TG = GetTangent(Nf);
+  vector rot_dir = vector(rotate( point(TG), -0.5 * radians( angle ), point(0,0,0),point(Nf)) );
+
+  color C = 0;
+  vector R =  reflect( -normalize(V), normalize(Nf) );
+  illuminance( "-ambient" ,  P ,  Nf ,  PI * 0.5 )  {
+    float nonspecular = 0;	lightsource("__nonspecular", nonspecular) ;
+    if(nonspecular < 0.5) {
+      vector Ln = normalize(L );
+      float dotNL = Nf . Ln;
+      if(dotNL > 0) {
+	C += Cl * GaussHighlight(roughness, spreadX, spreadY, Nf, -V, Ln, rot_dir, dotNL);
+      }
+    }
+  }
+  return C * speccol;
+}
+
+color getBlinn( normal Nf;
+		float eccentricity, specularRollOff;
+		  )
+{
+  color C = 0;
+  
+  extern point P; extern color Cl; extern vector L, I ;
+
+  float E;
+  if(eccentricity != 1) {
+    E = 1 / (eccentricity * eccentricity - 1);
+  } else {
+    E = -1e5;
+  }
+ 
+  vector V = normalize(-I);
+  float VN = V.Nf;
+  if(VN < 0) VN = min(VN,-0.00001);
+  else       VN = max(VN, 0,00001);
+  illuminance( "-ambient" ,  P ,  Nf ,  PI / 2 )  {
+    float nonspecular = 0;	lightsource("__nonspecular", nonspecular) ;
+    if(nonspecular < 0.5) {
+      vector Ln = normalize(L );
+      vector H = normalize(Ln+V);
+      float NH = Nf.H;
+      float NHSQ = NH*NH;
+      float NH2 = NH * 2;
+      float Dd = (E+1) / (NHSQ + E);
+      Dd *= Dd;
+      float VH = V.H;
+      float LN = Ln.Nf;
+      float Gg;
+      if( VN < LN ) {
+	if( VN * NH2 < VH )
+	  Gg = NH2 / VH;
+	else
+	  Gg = 1 / VN;
+      } else {
+	if( LN * NH2 < VH )
+	  Gg = (LN * NH2) / (VH * VN);
+	else
+	  Gg = 1 / VN;
+      }
+      Gg = clamp(Gg,0,1);
+       
+      float tmp = pow((1 - VH), 3);
+      float Ff = tmp + (1 - tmp) * specularRollOff;
+      C += Cl * Dd * Gg * Ff;
+
+
+    }
+  }
+  return C;
+}
+
+color maya_translucence(normal Nb; float focus)
+{
+  extern point P; extern color Cl; extern vector L, I ;
+
+  color c = 0;
+  illuminance( "-ambient" ,  P ,  Nb ,  PI )  {
+    float nondiffuse = 0;	lightsource("__nondiffuse", nondiffuse) ;
+    if(nondiffuse < 0.5) {
+      vector Ln = normalize(L );
+      float dotNL = Nb . Ln;
+      dotNL = 1 - (dotNL + 1) * 0.5;
+      if(focus < 0.5) {
+	dotNL = sqrt(dotNL * 0.5);
+	dotNL = mix(1, dotNL, focus * 2);
+      } else {
+	dotNL *= 1 - (focus-0.5) * 2;
+	dotNL = sqrt(dotNL * 0.5);
+      }
+      c += Cl * dotNL;
+    }
+  }
+
+  return c;
+}
+
+
+void maya_lighting(normal Nf; output color amb_ill, diff_ill, __shadow, diff_ill_no_shadow, ind_ill )
+{
+  extern point P; extern color Cl; extern vector L, I ;
+
+
+  amb_ill = ambient();
+
+  illuminance( "ambient" ,  P ,  Nf ,  PI * 0.5 )  {
+    float nondiffuse = 0;	lightsource("__nondiffuse", nondiffuse) ;
+    if(nondiffuse < 0.5) {
+      float dotNL = Nf . normalize(L );
+      amb_ill += Cl * dotNL;
+    } else {
+      amb_ill += Cl;
+    }
+  }
+
+  ind_ill = 0;
+  illuminance( "indirect" ,  P ,  Nf ,  PI * 0.5 )  {
+
+    float nondiffuse = 0;	lightsource("__nondiffuse", nondiffuse) ;
+    if(nondiffuse < 0.5) {
+      float dotNL = Nf . normalize(L );
+      ind_ill += Cl * dotNL;
+    }
+
+  }
+
+  diff_ill = 0;
+  diff_ill_no_shadow = 0;
+  __shadow = 0;
+  illuminance( "-ambient" ,  P ,  Nf ,  PI * 0.5 )  {
+ 
+    float nondiffuse = 0;	lightsource("__nondiffuse", nondiffuse) ;
+    if(nondiffuse < 0.5) {
+      float dotNL = Nf . normalize(L );
+      diff_ill += Cl * dotNL;
+      color __unshadowed_Cl;
+      if(lightsource("__unshadowed_Cl", __unshadowed_Cl) != 0) {
+	diff_ill_no_shadow += __unshadowed_Cl * dotNL;
+      } else {
+	diff_ill_no_shadow += Cl * dotNL;
+      }
+    }
+  }
+   
+
+   __shadow  = color(1 - max(comp(diff_ill,0),0.0001)/max(comp(diff_ill_no_shadow,0),0.0001), 1 - max(comp(diff_ill,1),0.0001)/max(comp(diff_ill_no_shadow,1),0.0001), 1 - max(comp(diff_ill,2),0.0001)/max(comp(diff_ill_no_shadow,2),0.0001)) ;
+}
+ 
+float wood2( point PP;
+	     float ringscale;
+	     float txtscale;
+	     float grainy )
+{
+  float my_t = zcomp(PP) / ringscale;
+  point PQ = point (xcomp(PP)*8, ycomp(PP)*8, zcomp(PP));
+  my_t += (float noise (PQ)) / 16;
+  
+  PQ = point (xcomp(PP), my_t, ycomp(PP)+12.93);
+  float r = ringscale * (float noise (PQ));
+  r -= floor (r);
+  r = 0.2 + 0.8 * smoothstep(0.2, 0.55, r) * (1 - smoothstep(0.75, 0.8, r));
+
+   
+  PQ = point (xcomp(PP)*128+5, zcomp(PP)*8-3, ycomp(PP)*128+1);
+  float r2 = grainy * (1.3 - (float noise (PQ))) + (1-grainy);
+
+  return r * r2 * r2;
+}
+
+
+float checker_func(vector uv, fw)
+{
+
+  float filteredpulsetrain(float x, dx)
+    {
+      float integral(float t)
+	{ 
+	  return (0.5*floor(t) + max(0,t-floor(t)-0.5));
+	}
+      float hw = dx * 0.5;
+      float i0 = integral(x+hw);
+      float i1 = integral(x-hw);
+      return (i0 - i1) / dx;
+    }
+  float UU = filteredpulsetrain(xcomp(uv), xcomp(fw));
+  float VV = filteredpulsetrain(ycomp(uv), ycomp(fw));
+
+  return (UU*VV) + (1-UU)*(1-VV);
+}
+
+ 
+float coverage_frac(float x, dx, r)
+{
+  float f = 1;
+  if(dx > 0) {
+    float lx = clamp(x-dx,0,r);
+    float hx = clamp(x+dx,0,r);
+    f = (hx - lx) / (dx * 2);
+  }
+  return f;
+}
+
+
+void apply_hsv_noise(output color c;
+		     point PS;
+		     float hueNoise; float hueNoiseFreq;
+		     float satNoise; float satNoiseFreq;
+		     float valNoise; float valNoiseFreq;)
+{
+  color C = ctransform("hsv", c);
+
+  float hue = comp(C,0);
+  if(hueNoise != 0) {
+#pragma nolint
+    hue += hueNoise * (2 * (float noise( PS * hueNoiseFreq )) - 1) ;
+  }    
+
+  float sat = comp(C,1);
+  if(satNoise != 0) {
+#pragma nolint
+    sat += satNoise * (2 * (float noise( PS * satNoiseFreq )) - 1) ;
+  }    
+
+  float val = comp(C,2);
+  if(valNoise != 0) {
+#pragma nolint
+    val += valNoise * (2 * (float noise( PS * valNoiseFreq )) - 1) ;
+  }    
+
+  c = ctransform("rgb", color "hsv" (hue,sat,val));
+}
+
+
+float apply_wave(float a; float d; float amount;)
+{
+  return a - sin(d * PI * 2) * amount;
+}
+
+
+float turb_noise(point PP; float levels; float phase)
+{
+  float pixelsize = sqrt(area(PP));
+  float twice = 2 * pixelsize;
+  float turb = 0;
+  float nl = 0;
+  float pixscale = 1;
+  while(pixscale > twice && nl < levels) {
+#pragma nolint
+    turb += pixscale * abs(float noise(PP/pixscale,phase)-0.5);
+    nl += 1;
+    pixscale *= 0.5;
+  }
+
+  if(nl < levels && pixscale > pixelsize) {
+    float weight = (pixscale / pixelsize) - 1;
+    weight = clamp(weight, 0, 1);
+#pragma nolint
+    turb += weight * pixscale * abs(float noise(PP/pixscale,phase)-0.5);
+  }
+
+  return turb;
+}
+
+float billow(point PP; float phase; float density; float spottyness; float sizerand; float randomness; float falloff)
+{
+  float r = 0;
+  point p = PP * 8 + vector(0.5,0.5,0);
+  point thiscell = point(floor(xcomp(p))+0.5, floor(ycomp(p))+0.5, 0.5);
+  uniform float i, j;
+  for (i = -2;  i <= 2;  i += 1) {
+    for (j = -2;  j <= 2;  j += 1) {
+      point testcell = thiscell + vector(i,j,0);
+      point pos = testcell + (2 * randomness) * (vector cellnoise(testcell) - vector(0.5,0.5,0.5));
+      vector offset = pos - p;
+      float dist = xcomp(offset) * xcomp(offset) + ycomp(offset) * ycomp(offset);
+      dist *= 2;
+      float rad = density;
+      rad -= sizerand * (float cellnoise(testcell) * 0.5);
+
+      if(dist < rad) {
+	rad = dist / rad;
+	rad *= (1-spottyness) + (float cellnoise(testcell + vector(123,79,31)) * 2) * spottyness;
+
+	if(falloff == 0  ) {
+	  r += 1-rad;
+	} else if(falloff == 1  ) {
+	  r += 1-rad;
+	} else if(falloff == 2  ) {
+	  r += 1-rad;
+	} else  {
+	  r += rad;
+	}
+      }
+
+    }
+  }
+
+  return r;
+}
+
+float fractal_billow(point PP; float ratio; float frequencyratio; float levels; float phase; float density; float spottyness; float sizerand; float randomness; float falloff)
+{
+  float pixelsize = sqrt(area(PP*8));  
+  float twice = 2 * pixelsize;
+  float nl = 0;
+  float pixscale = 1;
+
+  point p = PP;
+  float r = 0;
+  float amp = 1;
+  float nrm = 0;
+  while(pixscale > twice && nl < levels) {
+    r += billow(p, phase, density, spottyness, sizerand, randomness, falloff) * amp;
+    nrm += amp;
+    p *= frequencyratio;
+    amp *= ratio;
+    nl += 1;
+    pixscale /= frequencyratio;
+  }
+
+  if(nl < levels && pixscale > pixelsize) {
+    r += clamp((pixscale / pixelsize) - 1, 0, 1) * amp * billow(p, phase, density, spottyness, sizerand, randomness, falloff);
+    nrm += amp;
+  }
+
+  return clamp(r/nrm,0,1);
+}
+
+float fractal_waves(point PP; float ratio; float frequencyratio; float levels; float phase; float numwaves)
+{
+  float pixelsize = sqrt(area(PP)) * 2;
+  float twice = 2 * pixelsize;
+  float nl = 0;
+  float pixscale = 1;
+
+  point p = PP;
+  float r = 0;
+  float amp = 1;
+  while(pixscale > twice && nl < levels) {
+#pragma nolint
+    r += (2 * (float noise( p ,  phase )) - 1)  * amp;
+    p *= frequencyratio;
+    amp *= ratio;
+    nl += 1;
+    pixscale /= frequencyratio;
+  }
+
+  if(nl < levels && pixscale > pixelsize) {
+#pragma nolint
+    r += clamp((pixscale / pixelsize) - 1, 0, 1) * amp * (2 * (float noise( p ,  phase )) - 1) ;
+  }
+  return r + 0.5;
+}
+
+float fractal_wispy(point PP; float ratio; float frequencyratio; float levels; float phase)
+{
+  float pixelsize = sqrt(area(PP)) * 2;
+  float twice = 2 * pixelsize;
+  float nl = 0;
+  float pixscale = 1;
+
+  point p = PP;
+  float r = 0;
+  float amp = 1;
+  while(pixscale > twice && nl < levels) {
+#pragma nolint
+    r += (2 * (float noise( p ,  phase )) - 1)  * amp;
+    p *= frequencyratio;
+    amp *= ratio;
+    nl += 1;
+    pixscale /= frequencyratio;
+  }
+
+  if(nl < levels && pixscale > pixelsize) {
+#pragma nolint
+    r += clamp((pixscale / pixelsize) - 1, 0, 1) * amp * (2 * (float noise( p ,  phase )) - 1) ;
+  }
+  return r + 0.5;
+}
+
+float fractal_noise(point PP; float phase; float levels; float ratio)
+{
+  float pixelsize = sqrt(area(PP));
+  float twice = 2 * pixelsize;
+  point p = PP;
+  float nz = 0;
+  float pixscale = 1;
+  float nzscale = 1;
+  float i = 0;
+  while(pixscale > twice && i <= levels) {
+#pragma nolint
+    float sn = (2 * (float noise( p ,  phase )) - 1) ;
+    nz += nzscale * sn;
+    nzscale *= ratio;
+    pixscale *= 0.5;
+    p *= 2;
+    i += 1;
+  }
+  if (pixscale > pixelsize && i <= levels) {
+    float weight = clamp(pixscale/pixelsize - 1, 0, 1);
+#pragma nolint
+    float sn = (2 * (float noise( p ,  phase )) - 1) ;
+    nz += weight * nzscale * sn;
+  }
+
+  return nz;
+}
+
+vector vfBm(point p; float filtwidth; uniform float octaves, lacunarity, gain)
+{
+  vector sum = 0;
+  point pp = p;
+  float fw = filtwidth;
+  uniform float amp = 1;
+  uniform float i;
+  for (i = 0;  i < octaves;  i += 1) {
+#pragma nolint
+    sum += amp * ((2 * (vector noise(  pp  )) - 1)  * (1-smoothstep (0.2,0.75,  fw ))) ;
+    amp *= gain;
+    pp *= lacunarity;
+    fw *= lacunarity;
+  }
+  return sum;
+}
+
+float marble_3d(point pp;
+		float veinwidth, diffusion, contrast;
+		vector ripples, depth;
+		float amplitude, ratio;
+		uniform float filter_scale;)
+{
+  point p = pp * ripples;
+  p = pp + (amplitude * 0.5) * vfBm(p, max ( min( length( Du(  p  )*du ), length( Dv(  p  )*dv )), 1.0e-6 )  * filter_scale , 6, 2, 0.5);
+
+  float nz = mod(ycomp(p)*2,1);
+  nz *= 2;
+  if(nz > 1) nz = 2 - nz;
+  float base = smoothstep(0, veinwidth*2, nz);
+  float diff = smoothstep(0, diffusion*1.5, nz);
+  nz = diff * base;
+  nz = smoothstep(contrast * 0.5, 1 - (contrast * 0.5), nz);
+  return nz;
+}
+
+float contrast_func(float v, b, c)
+{
+  float r = b + (v - b) * c;
+  return smoothstep(-0.5,1.5,r);
+   
+}
+
+float setRange(float value, newMin, newMax, oldMin, oldMax)
+{
+  float r;
+  if(oldMin == oldMax) {
+    r = value;
+  } else if(value <= oldMin) {
+    r = newMin;
+  } else if(value >= oldMax) {
+    r = newMax;
+  } else {
+    r = (value - oldMin) * (newMax - newMin) / (oldMax - oldMin) + newMin;
+  }
+  return r;
+}
+
+float hue_key_val(float c, k, r)
+{
+  float v = abs(c - k);
+  if(v > 0.5) v = 1 - v;
+  if(v > r * 0.5) v = 0;
+  else            v = 1;
+  return v;
+}
+
+float key_val(float c, k, r)
+{
+  float v = abs(c - k);
+  if(v > r) v = 0;
+  else      v = 1;
+  return v;
+}
+
+void basic_cloth(float ix, iy, uWidth, vWidth;
+		 output float uf, vf)
+{
+  float STRAND_PROFILE(float _V_, _W_)
+    {
+      return sin(_V_ * PI / _W_);
+    }
+
+  float LENGTH_PROFILE(float _V_, _W_)
+    {
+      return sin((_V_ - _W_ * 0.5) * PI) * 0.5 + 0.5;
+    }
+
+  float LENGTH_PROFILEA(float _V_, _W_)
+    {
+      return LENGTH_PROFILE(_V_ * 2 + 0.5, _W_);
+    }
+
+  float LENGTH_PROFILEB(float _V_, _W_)
+    {
+      return LENGTH_PROFILE(_V_ * 2 - 0.5, _W_);
+    }
+
+  float x = mod(ix,1) * 2;
+  float y = mod(iy,1) * 2;
+  float xmod1 = mod(x,1);
+  float ymod1 = mod(y,1);
+
+  uf =  ((x<1 && y<1 && y>=vWidth && x<uWidth)|| (x<1 && y>=1 && x<uWidth)) ?
+    (STRAND_PROFILE(xmod1, uWidth) * LENGTH_PROFILEB(iy, vWidth))
+    : (((x>=1 && y>=1 && ymod1>=vWidth && xmod1<uWidth)|| (x>=1 && y<1 && xmod1<uWidth)) ?
+       STRAND_PROFILE(xmod1, uWidth) * LENGTH_PROFILEA(iy, vWidth) : 0);
+
+  vf = ((x<1 && y<1 && y<vWidth)||(x>=1 && y<1 && xmod1>=uWidth && y<vWidth)) ?
+    STRAND_PROFILE(ymod1, vWidth) * LENGTH_PROFILEA(ix, uWidth)
+    : (((x>=1 && y>=1 && ymod1<vWidth)|| (x<1 && y>=1 && x>=uWidth && ymod1<vWidth)) ?
+       STRAND_PROFILE(ymod1, vWidth) * LENGTH_PROFILEB(ix, uWidth) : 0);
+}
+
+
+float brownian_noise(point PP; float levels, lacunarity, ratio)
+{
+  point p = PP;
+  float nz = 0;
+  uniform float pixscale = 1;  
+  uniform float i;
+  for(i = 1; i < levels; i += 1) {
+#pragma nolint
+    p *= lacunarity;
+    pixscale *= 0.5;
+    nz += pixscale * (2 * (float noise( p )) - 1) ;
+  }
+#pragma nolint
+  return (2 * (float noise( PP )) - 1)  + nz * (1-smoothstep(-0.5,1,ratio));
+}
+
+float fBm4d(point p; float time, octaves, lacunarity, gain)
+{
+  float sum = 0, amp = 1;
+  point pp = p;
+  float i;
+  for (i = 0; i < octaves; i += 1) {
+#pragma nolint
+    sum += amp * (2 * (float noise( pp ,  time )) - 1) ;
+    amp *= gain;
+    pp  *= lacunarity;
+  }
+  return sum;
+}
+
+float waveNoise(point p)
+{
+  float wn = sin(2.8 * xcomp(p) + 5.4 * ycomp(p) - 1.8 * zcomp(p));
+  wn /= 2;    
+  wn += 0.5;  
+  return wn;
+}
+
+float waveNoise_fBm(point p; float time, octaves, lacunarity, gain, numWaves)
+{
+  float sum = 0, amp = 1;
+  point pp = p;
+  point wave;
+  float i, j;
+  for (i = 0; i < octaves; i += 1) {
+    wave = pp;
+    for (j = 0; j < numWaves; j += 1) {
+      sum += amp * (2 * waveNoise(wave) - 1) / numWaves;
+      wave = rotate(wave, -3.14/2.13, point(0,0,0), point(0,1,1));
+      wave = rotate(wave, 3.14/2.33, point(0,0,0), point(1,0,0));
+    }
+    amp *= gain;
+    pp  *= lacunarity;
+    pp = rotate(pp, -3.14/2.1, point(0,0,0), point(0,1,0));
+    pp = rotate(pp, 3.14/1.33, point(0,0,0), point(.3,0,.4));
+    setycomp(pp, -ycomp(pp));
+  }
+  return sum;
+}
+
+float calculateFogAmount(float lambda, saturationDistance, nearClip, s[4], farClip)
+{
+  float s0, s1, s2, s3;
+  if (s[0] > s[3]) { s0 = s[3]; s1 = s[2]; s2 = s[1]; s3 = s[0]; }
+  else             { s0 = s[0]; s1 = s[1]; s3 = s[2]; s3 = s[3]; }
+  float lambdaInFog = clamp(lambda, 0, min(s3, farClip));
+  lambdaInFog -= max(s0, max(0, nearClip));
+  if (s3 < 0 || lambdaInFog < 0)
+    lambdaInFog = 0;
+  return 1 - exp( -lambdaInFog / saturationDistance);
+}
+
+float calculateDistanceAlongVector(float dy, xDivY, zDivY, ycompOfD)
+{
+  float dx = dy * xDivY;
+  float dz = dy * zDivY;
+  float distance = sqrt(dx*dx + dy*dy + dz*dz);
+  if ((dy > 0 && ycompOfD > 0) || (dy < 0 && ycompOfD < 0)) {
+    distance = -distance;
+  }
+  return distance; 
+}
+
+void fog_light_density(point PC, PS; uniform float geom_type, radius;
+		       output color Lscatter; output float density)
+{
+  Lscatter = 0;
+  density = 0;
+  illuminance(PC) {
+
+    color lc = Cl;
+     
+    float fogIntensity;
+    if(lightsource("__fogIntensity", fogIntensity) == 1) {
+      lc *= fogIntensity;
+    }
+    Lscatter += lc;
+
+    if(geom_type == 1 ) {
+      float fogSpread, coneangle;
+      if(lightsource("coneangle", coneangle) == 1 &&
+	 lightsource("__fogSpread", fogSpread) == 1) {
+	vector lv = normalize(vector(PS));
+ 	float cosangle = -zcomp(lv);
+	float angle = acos(cosangle);
+
+	 
+	float critical_angle;
+	if(fogSpread < 1)
+	  critical_angle = pow(fogSpread,4);
+	else
+	  critical_angle = 1 - 0.5 / fogSpread;
+	float atten = 1;
+	if(angle > critical_angle)
+	  atten = 1 - (angle - critical_angle) / (coneangle - critical_angle);
+
+	if(fogSpread < 1)
+	  atten /= sqrt(fogSpread);
+
+	atten /= abs(zcomp(PS));
+	atten *= 0.707 * 0.5 / coneangle;
+	density += atten;
+      }
+    } else if(geom_type == 2 ) {
+      float atten = 1 - length(PS) / radius;
+      atten = pow(atten,4);
+      density += atten;
+    } else {
+      density += 0.1;
+    }
+  }
+}
+
+ 
+float non_zero_quadratic_root(float A,B,C)
+{
+  float det = B*B - 4*A*C;
+  if(det <= 0)
+    det = 0;
+  else {
+    det = sqrt(det);
+    float denom = 1/(2*A);
+    float r0 = (-B + det) * denom;
+    float r1 = (-B - det) * denom;
+    if(abs(r0) < abs(r1))
+      det = r1;
+    else
+      det = r0;
+  }
+  return det;
+}
+
+ 
+float cone_intersect(point Pcone;      
+		     uniform float r;  
+		     uniform float h;  
+		     vector dir)       
+{
+  float x = xcomp(Pcone);
+  float y = ycomp(Pcone);
+  float z = zcomp(Pcone);
+
+  float dx = xcomp(dir);
+  float dy = ycomp(dir);
+  float dz = zcomp(dir);
+
+  float br = 0;
+  if(z < 0) {  
+    z = -z;
+    dz = -dz;
+  } else {
+     
+    br = 5;
+  }
+
+  float A = dx*dx + dy*dy - r*r*dz*dz;
+  float B = 2 * (dx*x + dy*y - dz*z*r*r);
+  float C = x*x + y*y - r*r*z*z;
+
+  float ci = non_zero_quadratic_root(A,B,C);
+
+  if(ci < 0) {
+     
+
+    ci = (h - z) / dz;
+    br = 6;
+  } else {
+     
+    float ez = z + ci * dz;
+
+    if(ez >= h) {
+       
+      if(z < h) {
+	float good_frac = (h - z) / (ez - z);
+	ci *= good_frac;
+	br = 1;
+      } else {
+	ci = 0;
+	br = 2;
+      }
+    } else if(z >= h) {
+       
+       
+      float good_frac = (ez - h) / (z - ez);
+      ci *= good_frac;
+      br = 3;
+    }
+  }
+
+  return ci;
+}
+
+ 
+float sphere_intersect(point Psphere;    
+		       uniform float r;  
+		       vector dir)       
+{
+  float A = dir.dir;
+#pragma nolint
+  float B = 2 * (dir.Psphere);
+#pragma nolint
+  float C = Psphere.Psphere - r*r;
+
+  return non_zero_quadratic_root(A,B,C);
+}
+
+void ray_march(output color Cv, Ov; string camera_shadow;
+               uniform float geom_type, radius;
+               point PS;  
+               vector IS;  
+	       color scatter;
+	       float density, maxsteps, requested_stepsize)
+{
+  float opacdensity  = density;
+  float lightdensity = density;
+
+  point origin = PS;     
+#pragma nolint
+  point Worigin = transform("shader", "current", origin);
+  float dtau, last_dtau;
+  color li, last_li;
+
+  float stepsize = requested_stepsize;
+  float d = length(IS);
+  if(d / stepsize > maxsteps)
+    stepsize = d / maxsteps;
+
+  vector IN = IS / d;
+#pragma nolint
+  vector WIN = vtransform ("shader", "current", IN);
+
+  d = random() * stepsize;
+  float end = length(IS) - 0.0001;
+  float ss = min (stepsize, end-d);
+  float clip = 0;
+  if(camera_shadow != "") clip = shadow(camera_shadow, Worigin + d*WIN);
+  fog_light_density(Worigin + d*WIN, origin + d*IN, geom_type, radius, last_li, last_dtau);
+  while (d < end && clip < 0.5) {
+    ss = clamp (ss, 0.005, end-d);
+    d += ss;
+    if(camera_shadow != "") clip = shadow(camera_shadow, Worigin + d*WIN);
+    fog_light_density(Worigin + d*WIN, origin + d*IN, geom_type, radius, li, dtau);
+    float tau      = opacdensity  * ss/2 * (   dtau +         last_dtau);
+    color lighttau = lightdensity * ss/2 * (li*dtau + last_li*last_dtau);
+    Cv += (1-Ov) * lighttau;
+    Ov += (1-Ov) * (1 - colorexp(-tau*scatter));
+    last_dtau = dtau;
+    last_li = li;
+  }
+}
+
+void cone_density(output color Cv, Ov; string camera_shadow; uniform float rad, hig, shadowed; color fogcolor; float fogdensity, maxsteps, stepsize)
+{
+  point  PS =  transform("shader", P);
+  vector IS = normalize(vtransform("shader", I));
+
+  float ci = cone_intersect(PS, rad, hig, IS);
+
+  if(shadowed == 1) {
+    ray_march(Cv,Ov,camera_shadow,1 ,rad,PS,IS*ci,fogcolor,fogdensity,maxsteps,stepsize);
+  } else {
+    Cv = fogcolor;
+    Ov = abs(ci * length(IS)) * fogdensity;
+  }
+}
+
+void sphere_density(output color Cv, Ov; string camera_shadow; uniform float rad, shadowed; color fogcolor; float fogdensity, maxsteps, stepsize)
+{
+   
+
+  point  PS =  transform("shader", P);
+  vector IS = vtransform("shader", I);
+
+  float ci = sphere_intersect(PS, rad, IS);
+
+  if(shadowed == 1) {
+    ray_march(Cv,Ov,camera_shadow,2 ,rad,PS,IS*ci,fogcolor,fogdensity,maxsteps,stepsize);
+  } else {
+    Cv = fogcolor;
+    Ov = abs(ci * length(IS)) * fogdensity;
+  }
+}
+
+void box_density(output color Cv, Ov; string camera_shadow; uniform float len, wid, hig, shadowed; color fogcolor; float fogdensity, maxsteps, stepsize)
+{
+  float face_clip(uniform float w; float x, d)
+    {
+      return (w - x) / d;
+    }
+
+  float c_good(uniform float bx,by; float x,y,dx,dy,c)
+    {
+      float good(uniform float b; float x,dx,c)
+	{
+	  float r = x+dx*c;
+	  if(r < -b || r > b)
+	    r = 0;
+	  else
+	    r = 1;
+	  return r;
+	}
+      return good(bx,x,dx,c) * good(by,y,dy,c);
+    }
+
+  point  PS =  transform("shader", P);
+  vector IS = vtransform("shader", I);
+
+  float x = xcomp(PS);
+  float y = ycomp(PS);
+  float z = zcomp(PS);
+
+  float dx = xcomp(IS);
+  float dy = ycomp(IS);
+  float dz = zcomp(IS);
+
+  float cx0 = face_clip( len, x, dx);
+  float cy0 = face_clip( wid, y, dy);
+  float cz0 = face_clip( hig, z, dz);
+	      		       
+  float cx1 = face_clip(-len, x, dx);
+  float cy1 = face_clip(-wid, y, dy);
+  float cz1 = face_clip(-hig, z, dz);
+
+  float ci = 0;
+  if(cx0 > ci && c_good(wid,hig,y,z,dy,dz,cx0) == 1) ci = cx0;
+  if(cy0 > ci && c_good(len,hig,x,z,dx,dz,cy0) == 1) ci = cy0;
+  if(cz0 > ci && c_good(len,wid,x,y,dx,dy,cz0) == 1) ci = cz0;
+  if(cx1 > ci && c_good(wid,hig,y,z,dy,dz,cx1) == 1) ci = cx1;
+  if(cy1 > ci && c_good(len,hig,x,z,dx,dz,cy1) == 1) ci = cy1;
+  if(cz1 > ci && c_good(len,wid,x,y,dx,dy,cz1) == 1) ci = cz1;
+
+  Cv = fogcolor;
+  Ov = abs(ci * length(IS)) * fogdensity;
+}
+
+color c_lookup_ramp_value(uniform float nvals;
+			  varying float aa;
+			  vector val[ ];
+			  uniform float  pos[ ];
+			  uniform float interp[ ];)
+{
+  vector r = 0;
+  float a = aa;
+  if(a < 0 || a > 1) a = mod(a,1);	 
+  float low_i   = -1;		 
+  float low_pos = -1;		 
+  float hi_i    = -1;		 
+  float hi_pos  = -1;		 
+  uniform float i;
+  for(i = 0; i < nvals; i = i + 1) {
+    uniform float posi = pos[i];
+    if(posi <= a && (low_i < 0 || posi > low_pos)) {
+      low_i = i;
+      low_pos = posi;
+    }
+    if(posi >= a && (hi_i < 0 || posi < hi_pos)) {
+      hi_i = i;
+      hi_pos = posi;
+    }
+  }
+  if(low_i == -1) {
+    r = val[hi_i];
+  } else if(hi_i == -1) {
+    r = val[low_i];
+  } else if(hi_i == low_i) {
+    r = val[low_i];
+  } else {
+    r = mix(val[low_i], val[hi_i], smoothstep(pos[low_i], pos[hi_i], a));
+  }
+  return color(r);
+}
+
+float f_lookup_ramp_value(uniform float nvals;
+			  varying float aa;
+			  float val[ ];
+			  uniform float pos[ ];
+			  uniform float interp[ ];)
+{
+  float r = 0;
+  float a = aa;
+  if(a < 0 || a > 1) a = mod(a,1);	 
+  float low_i   = -1;		 
+  float low_pos = -1;		 
+  float hi_i    = -1;		 
+  float hi_pos  = -1;		 
+  uniform float i;
+  for(i = 0; i < nvals; i = i + 1) {
+    uniform float posi = pos[i];
+    if(posi <= a && (low_i < 0 || posi > low_pos)) {
+      low_i = i;
+      low_pos = posi;
+    }
+    if(posi >= a && (hi_i < 0 || posi < hi_pos)) {
+      hi_i = i;
+      hi_pos = posi;
+    }
+  }
+  if(low_i == -1) {
+    r = val[hi_i];
+  } else if(hi_i == -1) {
+    r = val[low_i];
+  } else if(hi_i == low_i) {
+    r = val[low_i];
+  } else {
+    r = mix(val[low_i], val[hi_i], smoothstep(pos[low_i], pos[hi_i], a));
+  }
+  return r;
+}
+
+float compute_fluid_interp(uniform float mode; uniform float wid, hig, dep; varying float density, temp, fuel; varying point PS)
+{
+  float interp = 0;
+  if(mode == 0) {  
+    interp = 1;
+  } else if(mode == 1) {  
+    interp = 1 - (xcomp(PS) + wid * 0.5) / wid;
+  } else if(mode == 2) {  
+    interp = 1 - (ycomp(PS) + hig * 0.5) / hig;
+  } else if(mode == 3) {  
+    interp = 1 - (zcomp(PS) + dep * 0.5) / dep;
+  } else if(mode == 4) {  
+    float x = abs(xcomp(PS) / dep);
+    float y = abs(ycomp(PS) / hig);
+    float z = abs(zcomp(PS) / dep);
+    float r = sqrt(x * x + y * y + z * z);
+    interp = 1 - smoothstep(0,0.8,r);
+  } else if(mode == 5) {  
+    interp = density;  
+  } else if(mode == 6) {  
+    interp = temp;
+  } else if(mode == 7) {  
+    interp = fuel;
+  } else if(mode == 8) {  
+  } else if(mode == 9) {  
+  } else if(mode == 10) {  
+  }
+  return interp;
+}
+
+float apply_input_bias(float i, b)
+{
+  float mid = 0.5 - b * 0.5;
+  if(i < mid) mid = 0.5 * (i / mid);
+  else        mid = 0.5 * (i - mid) / (1 - mid) + 0.5;
+  return mid;
+}
+
+float crude_opac_texture(varying point PS)
+{
+  float pn;
+  {	float pixelsize = sqrt(area( PS )) * 2;	float twice = 2 * pixelsize;	point p =  PS ;	 pn  = 0;	float amp = 1;	float nl = 0;	float pixscale = 1;	while(pixscale > twice && nl <  3 ) {	 pn  += (2 * (float noise( p ,   0  )) - 1)  * amp;	p *=  2.0 ;	amp *=  0.707 ;	nl += 1;	pixscale *= 0.5;	}	if(nl <  3  && pixscale > pixelsize) {	 pn  += clamp((pixscale / pixelsize) - 1, 0, 1) * amp * (2 * (float noise( p ,   0  )) - 1) ;	}	 pn  *= 0.6;	} ;
+  pn *= 2;
+  pn += 1;
+  pn *= 0.5;
+  return pn;
+}
+
+surface mms_blinn1(
+	float a_0_MayaManReflSamps = 1;
+	float a_0_MayaManReflBlur = 0;
+	float a_0_MayaManRefrSamps = 1;
+	float a_0_MayaManRefrBlur = 0;
+	varying color a_0_reflectedColor = color(0,0,0);
+	float a_1_placementMatrix[16] = {1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
+	float a_2_worldMatrix[16] = {1,0,0,0,  0,1,0,0,  0,0,1,0,  0,0,0,1};
+	float indirect_filter_scale = 1;	float env_blur = 0.33;	float  e0    = 0;	varying float  u0    = 0;	varying float  v0    = 0 ;	float Kd = 0.5; float Ka = 0.2; float __no_shadows = 0;	output varying float __matteOpacity = 0.0;	output varying color __shadow = color(0);	output varying normal __normal = normal(0,1,0);	output varying color __diffuse_unshadowed = color(0);	output varying color __diffuse = color(0);	output varying color __ambient = color(0);	output varying color __incandescence = color(0);	output varying color __specular = color(0);	output varying color __indirect = color(0);	output varying color __reflect = color(0);	output varying color __refract = color(0);	float use_ray_tracing = 0;	string cfenv = "";	varying color rgbPP = color(-1);	varying float opacityPP = -1  ;
+	float __cyl_shaded = 0; float UsePref = 0;	vector __Poffset = 0;	varying normal __Nref = 0;	varying point __Pref = point "current" (1e10,1e10,1e10)  ;)
+{
+   ;
+#pragma nolint
+  normal NN = normalize(N);	if(__cyl_shaded ==   1  ) {	 NN  = normal(rotate(point( NN ), (u - 0.5) * PI, point(0,0,0), point(dPdv)));	} ;	normal Nf = faceforward(NN, I);	normal NS = ntransform("current", "shader", NN); normal Ncam = ntransform("current", "camera", Nf) * vector(1,1,-1) ;	uniform float filter_scale = 1 ;	float U_COORD;	float V_COORD;	if(e0 != 0) { U_COORD = u0; V_COORD = v0; }	else        { U_COORD = s;  V_COORD = 1-t; }	float U_COORD_FW = max (abs(Du(  U_COORD  )*du) + abs(Dv(  U_COORD  )*dv), 1.0e-6 )   * filter_scale ;	float V_COORD_FW = max (abs(Du(  V_COORD  )*du) + abs(Dv(  V_COORD  )*dv), 1.0e-6 )   * filter_scale  ;	uniform float only_do_opacity = 0 ;	 ;	__diffuse_unshadowed = 0;	__diffuse = 0;	__ambient = 0;	__incandescence = 0;	__specular = 0;	__indirect = 0;	__reflect = 0;	__refract = 0;	color _amb_ill        = 0;	color _diff_ill       = 0;	color _shd_ill        = 0;	color _diff_unshd_ill = 0;	color _ind_ill        = 0;	color _spec_ill       = 0;	color _trans_ill      = 0;	float got_amb_diff_shd_ind = 0;	float got_specular         = 0;	float got_trans            = 0;	vector IN = normalize(I);	point PS; uniform vector Poffset = vtransform("shader", __Poffset);	if(UsePref == 0 || __Pref == point "current" (1e10,1e10,1e10) ) {	 PS  = P;	 NS  = NN;	if(displacement("__Pundeformed",  PS ) == 0) {	 PS  = transform("shader",  PS );	}	if(displacement("__Nundeformed",  NS ) == 0) {	 NS  = ntransform("shader",  NS );	}	} else {	if(__Nref != normal(0)) {	  NS   = ntransform("shader", __Nref);	  NS   = normal "world" (xcomp(  NS  ), ycomp(  NS  ), zcomp(  NS  ));   NS   = ntransform("shader",   NS  );	} else {	  NS   = ntransform("current", "shader", NN);	}	  PS   = transform("shader", __Pref);	  PS   = point "world" (xcomp(  PS  ), ycomp(  PS  ), zcomp(  PS  ));	  PS   = transform("shader",   PS  ) ;	}	 PS  += Poffset  ;
+  if(check_slice_plane(P) == 0) {	Oi = 0;	Ci = 0;	}  else {
+    color v_0_transparency = color(0,0,0);
+
+    uniform float v_0_MayaManReflSamps = a_0_MayaManReflSamps;
+    uniform float v_0_MayaManReflBlur = a_0_MayaManReflBlur;
+    uniform float v_0_MayaManRefrSamps = a_0_MayaManRefrSamps;
+    uniform float v_0_MayaManRefrBlur = a_0_MayaManRefrBlur;
+
+    color v_0_color;
+    color v_0_reflectedColor = a_0_reflectedColor;
+    normal v_0_normalCamera;
+    matrix v_1_placementMatrix = matrix( a_1_placementMatrix [ 0+ 0 ], a_1_placementMatrix [ 1+ 0 ], a_1_placementMatrix [ 2+ 0 ], a_1_placementMatrix [ 3+ 0 ],	 a_1_placementMatrix [ 4+ 0 ], a_1_placementMatrix [ 5+ 0 ], a_1_placementMatrix [ 6+ 0 ], a_1_placementMatrix [ 7+ 0 ],	 a_1_placementMatrix [ 8+ 0 ], a_1_placementMatrix [ 9+ 0 ], a_1_placementMatrix [10+ 0 ], a_1_placementMatrix [11+ 0 ],	 a_1_placementMatrix [12+ 0 ], a_1_placementMatrix [13+ 0 ], a_1_placementMatrix [14+ 0 ], a_1_placementMatrix [15+ 0 ]) ;
+    uniform matrix v_2_worldMatrix[1];
+    v_2_worldMatrix[0] = matrix( a_2_worldMatrix [ 0+ 0 ], a_2_worldMatrix [ 1+ 0 ], a_2_worldMatrix [ 2+ 0 ], a_2_worldMatrix [ 3+ 0 ],	 a_2_worldMatrix [ 4+ 0 ], a_2_worldMatrix [ 5+ 0 ], a_2_worldMatrix [ 6+ 0 ], a_2_worldMatrix [ 7+ 0 ],	 a_2_worldMatrix [ 8+ 0 ], a_2_worldMatrix [ 9+ 0 ], a_2_worldMatrix [10+ 0 ], a_2_worldMatrix [11+ 0 ],	 a_2_worldMatrix [12+ 0 ], a_2_worldMatrix [13+ 0 ], a_2_worldMatrix [14+ 0 ], a_2_worldMatrix [15+ 0 ]) ;
+     ;
+    if (rgbPP != color(-1)) {    v_0_color   = rgbPP; } if (opacityPP != -1) {    v_0_transparency   = 1 - opacityPP; } ;   v_0_normalCamera   = Ncam ;
+    if(only_do_opacity == 0) {
+       ;
+       ;
+       ;
+       ;
+       ;
+      matrix   v_2_worldInverseMatrix  [1];	if(  1    == 1) {	uniform matrix mtx = (1 / (matrix "world" 1)) * (matrix "shader" 1);	  v_2_worldInverseMatrix  [0] = mtx /   v_2_worldMatrix[0]  ;	} else {	  v_2_worldInverseMatrix  [0] = matrix "current" 1 /   v_2_worldMatrix[0]  ; } ;
+
+      v_1_placementMatrix  = v_2_worldInverseMatrix[0];
+       ;
+      float   v_1_outAlpha  ;	color   v_1_outColor  ;	{	point tP;   tP  = PS; if(   0    == 0) {   tP  = transform("shader", "world",   tP ); }   tP  = transform(   v_1_placementMatrix  ,   tP ); if(vector(0,0,0) != vector(   0   )) {   tP  /=    0   ; }   tP  +=    0   ; ; tP *=   vector(1,1,1)   ;	  v_1_outAlpha   = brownian_noise(tP,	  3   ,	  4   ,	  0.1   );	  v_1_outAlpha   = smoothstep(-0.75,0.75,  v_1_outAlpha  );	  v_1_outColor   =   v_1_outAlpha  ;	}	if(   0    == 1) {	   v_1_outAlpha   = ((comp(    v_1_outColor   ,0)*299+comp(    v_1_outColor   ,1)*587+comp(    v_1_outColor   ,2)*144)/1030) ;	} ; if(   0    == 1) {	   v_1_outAlpha   = 1 -    v_1_outAlpha  ;	   v_1_outColor   = 1 -    v_1_outColor  ;	} ;    v_1_outColor   *=    color(1,1,1)   ;	   v_1_outColor   +=    color(0,0,0)   ; ;	   v_1_outAlpha   *=    1   ;	   v_1_outAlpha   +=    0     ;
+
+      v_0_color            = color(v_1_outColor);
+    }
+     ;
+    float    v_0_outMatteOpacity   =    1   ;	__matteOpacity =    v_0_outMatteOpacity   ;	color   v_0_outColor  ,   v_0_outTransparency  ;	{	normal nm = ntransform("camera", "current", normal(vector(1,1,-1) *    v_0_normalCamera  )) ;	color    v_0_basicTrsp   = 0;	color    v_0_basicTrspAtten   = 1;	__refract = 0;	if (cfenv != "" && (   v_0_transparency   != color(0)) && (   1    != 1)) {	vector Rfldir, Rfrdir;	float kr, kt;	setup_rfl_rfr(Rfldir, Rfrdir, kr, kt, IN, nm,    1   );	kt = 1-kr;	   v_0_basicTrspAtten   *= (1 -    v_0_transparency  );	color rc;	float ra;	if(  Rfrdir   .   Rfrdir   > 0.000001) {	vector dir = vtransform("world",   Rfrdir  );	  rc   = environment(cfenv, dir, "samples",      v_0_MayaManRefrSamps   , "blur",      v_0_MayaManRefrBlur   );	uniform float nc = 0;	if (textureinfo(cfenv, "channels", nc)!=0 && nc>3) {	  ra   = float environment(cfenv[3], dir, "samples",      v_0_MayaManRefrSamps   , "blur",      v_0_MayaManRefrBlur   );	} else {	  ra   = 1;	}	} else {	  rc   = 0;	  ra   = 0;	}  ;	   v_0_basicTrsp   += (rc *    v_0_transparency  ) * kt;	   v_0_outTransparency   = 0;	__refract =    v_0_basicTrsp  ;	} else {	   v_0_outTransparency   =    v_0_transparency  ;	} ;	if(opacityPP != -1) {	   v_0_outTransparency    = 1 -    v_0_outTransparency  ;	   v_0_outTransparency   *= opacityPP;	   v_0_outTransparency    = 1 -    v_0_outTransparency  ;	} ;	if(only_do_opacity == 0) {	color    v_0_basicRefl   = 0;	__reflect = color(0);	if(   0.5    > 0) {	color rc =    v_0_reflectedColor  ;	if(cfenv != "") {	float ra;	if(match( "\.mir\.tex$"  ,  cfenv )  == 1) {	point PNDC = transform("NDC", P);	 rc  = texture(cfenv, xcomp(PNDC), ycomp(PNDC),	"samples",     v_0_MayaManReflSamps  ,	"blur",        v_0_MayaManReflBlur  );	 ra  = texture(cfenv[3], xcomp(PNDC), ycomp(PNDC),	"samples",     v_0_MayaManReflSamps  ,	"blur",        v_0_MayaManReflBlur  );	} else {	vector rfldir = reflect(IN, Nf);	if( rfldir  .  rfldir  > 0.000001) {	vector dir = vtransform("world",  rfldir );	  rc   = environment(cfenv, dir, "samples",      v_0_MayaManReflSamps   , "blur",      v_0_MayaManReflBlur   );	uniform float nc = 0;	if (textureinfo(cfenv, "channels", nc)!=0 && nc>3) {	  ra   = float environment(cfenv[3], dir, "samples",      v_0_MayaManReflSamps   , "blur",      v_0_MayaManReflBlur   );	} else {	  ra   = 1;	}	} else {	  rc   = 0;	  ra   = 0;	} ;	} ;	rc =    v_0_reflectedColor   * (1 - ra) + rc;	}	   v_0_basicRefl   = rc *    0.5   ;	   v_0_basicRefl   *=    color(0.5,0.5,0.5)   ;	__reflect =    v_0_basicRefl  ;	} ;	{	__incandescence = 0;	__normal = normalize(ntransform("camera",nm));	if(got_amb_diff_shd_ind == 0) {	normal NtoUse = nm ;	maya_lighting(NtoUse, _amb_ill, _diff_ill, _shd_ill, _diff_unshd_ill, _ind_ill);	 ;	__shadow = _shd_ill;	__indirect = _ind_ill;	got_amb_diff_shd_ind = 1;	}	   v_0_outColor    = _amb_ill +    color(0,0,0)   ;	__ambient =    v_0_outColor  ;	   v_0_outColor   += _diff_ill *    0.8   ;	__diffuse            = _diff_ill       *    0.8    *    v_0_color   * (1-    v_0_transparency  ); __diffuse_unshadowed = _diff_unshd_ill *    0.8    *    v_0_color   * (1-    v_0_transparency  ); if(   0    != 0) {	if(got_trans == 0) {	_trans_ill = maya_translucence(-nm,    0.5   ); got_trans = 1;	}	   v_0_outColor   += _trans_ill *    0   ; }	} ;	    v_0_outColor   *=     v_0_color  ;	    v_0_outColor   *=     v_0_basicTrspAtten  ;	    v_0_outColor   +=     v_0_basicTrsp  ;	    v_0_outColor   *= 1 -     v_0_outTransparency   ;	   v_0_outColor   +=    v_0_basicRefl   ;	color Ir;	color Is = color(0,0,0);	if(  color(0.5,0.5,0.5)    != color(0,0,0)) {	if(got_specular == 0) {	Is = getBlinn(nm,	  0.3   ,	  0.7     );	_spec_ill = Is;	got_specular = 1;	} else {	Is = _spec_ill;	}	}	color sc =   color(0.5,0.5,0.5)    * (Is ); __specular = sc;	  v_0_outColor   += sc;	__incandescence +=   color(0,0,0)   ;	  v_0_outColor   += __incandescence;	} else {	  v_0_outColor   = Cs;	  v_0_outColor   *= 1 -   v_0_outTransparency  ; }	if(rgbPP != color(-1)) {	   v_0_outColor   *= rgbPP;	} ;	 ;	} ;
+
+    Ci = v_0_outColor;
+    Oi = Os;
+  }
+   
+   ;
+   
+}

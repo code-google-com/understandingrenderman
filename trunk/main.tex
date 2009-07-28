@@ -1,0 +1,85 @@
+%!TEX TS-program = xelatex
+%!TEX encoding = UTF-8 Unicode
+
+\documentclass[11pt,a4paper]{book}
+%\usepackage[russian,english]{babel}
+\usepackage{geometry}                % See geometry.pdf to learn the layout options. There are lots.
+\geometry{a4paper}                   % ... or a4paper or a5paper or ... 
+%\geometry{landscape}                % Activate for for rotated page geometry
+%\usepackage[parfill]{parskip}    % Activate to begin paragraphs with an empty line rather than an indent
+
+\addtolength{\parskip}{\baselineskip}
+
+\usepackage{graphicx}
+\DeclareGraphicsExtensions{png}
+
+\usepackage[russian,english]{babel}
+
+ % \usepackage{verse}
+   % \usepackage{textcomp} 
+
+   % \usepackage{epigraph}
+    %\usepackage{verbatim}
+    %\usepackage{ulem}
+    %\usepackage{sectsty}
+    
+% Surround parts of graphics with box
+%\usepackage{boxedminipage}
+
+% Package for including code in the document
+\usepackage{listings}
+\usepackage{color}
+
+% Will Robertson's fontspec.sty can be used to simplify font choices.
+% To experiment, open /Applications/Font Book to examine the fonts provided on Mac OS X,
+% and change "Hoefler Text" to any of these choices.
+
+\usepackage{fontspec,xltxtra,xunicode}
+\defaultfontfeatures{Mapping=tex-text}
+\setromanfont[Mapping=tex-text]{Droid Serif}
+\setsansfont[Scale=MatchLowercase,Mapping=tex-text]{Droid Sans}
+\setmonofont[Scale=MatchLowercase]{Droid Sans Mono}
+
+\linespread{1.3}
+\pagestyle{plain}
+
+\title{Короткая глава в большой книжке,\\ которая раньше называлась\\ "Сношения с внешними рендерерами\\ или присовокупление к Renderman",\\ а теперь вышла\\ отдельной небольшой книгой\\ и поэтому должна называться\\ по-другому,\\ но я пока не придумал\\ название.}
+\author{}
+\date{}                                           % Activate to display a given date or no date
+
+%\includeonly{ch7,ch8,ch9}
+
+\begin{document}
+\Rus
+\tolerance=5000
+%\tableofcontents
+%\maketitle
+
+\newcommand{\gr}[1]{\begin{center}\includegraphics[scale=0.3]{chapterRendermanOK_files/#1.png}\end{center}}
+
+\definecolor{light-gray}{gray}{0.95}
+
+\newcommand{\code}[1]{\lstinputlisting[frame=single, framerule=0pt, framesep=10pt, xleftmargin=10pt, xrightmargin=10pt, basicstyle=\ttfamily \small, backgroundcolor=\color{light-gray}]{#1}}
+
+\include{ch1}
+\include{ch2}
+\include{ch3}
+\include{ch4}
+\include{ch5}
+\include{ch6}
+\include{ch7}
+\include{ch8}
+\include{ch9}
+\include{ch10}
+\include{ch11}
+\include{ch12}
+\include{ch14}
+\include{ch15}
+\include{ch16}
+\include{ch17}
+\include{ch18}
+\include{ch19}
+\include{ch20}
+
+
+\end{document}  

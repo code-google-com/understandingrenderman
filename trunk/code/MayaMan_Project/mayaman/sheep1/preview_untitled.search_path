@@ -1,0 +1,8 @@
+#MayaMan 1.2.18
+##RenderMan RIB
+version 3.03
+Option "searchpath" "shader" ["&://d/mayaman/shaders/prman11://F/book/MayaMan_Project/mayaman"]
+Option "searchpath" "archive" ["//F/book/MayaMan_Project/mayaman/sheep1://F/book/MayaMan_Project/mayaman"]
+Option "searchpath" "texture" ["//F/book/MayaMan_Project/mayaman/tex_cache/prman://F/book/MayaMan_Project/mayaman/sheep1/shadow_maps/prman://F/book/MayaMan_Project/mayaman/sheep1/reflection_maps/prman"]
+Declare "procedural" "uniform string"
+Option "searchpath" "procedural" ["//d/mayaman/bin:&"]
